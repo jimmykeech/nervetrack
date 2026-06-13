@@ -1,0 +1,45 @@
+# Production-style stack. One command brings up backend + frontend:
+#   docker compose up --build
+#
+# For hot-reload development, layer the dev override:
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+services:
+  backend:
+    build: ./backend
+    environment:
+      NERVETRACK_DB_PATH: /data/nervetrack.duckdb
+      NERVETRACK_TIMEZONE: ${NERVETRACK_TIMEZONE:-Australia/Sydney}
+      NERVETRACK_CORS_ORIGINS: '["http://localhost:3000","http://localhost:5173"]'
+      # Google OAuth (invite-only). Create a Web OAuth client in Google Cloud.
+      NERVETRACK_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      NERVETRACK_GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      NERVETRACK_OAUTH_REDIRECT_URI: ${OAUTH_REDIRECT_URI:-http://localhost:3000/api/v1/auth/google/callback}
+      NERVETRACK_FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      NERVETRACK_ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
+      NERVETRACK_SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
+      NERVETRACK_COOKIE_SECURE: ${COOKIE_SECURE:-false}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - nervetrack-data:/data
+    ports:
+      - '8000:8000'
+    healthcheck:
+      test: ['CMD', 'python', '-c', "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  frontend:
+    build: ./frontend
+    environment:
+      BACKEND_URL: http://backend:8000
+      PORT: '3000'
+    ports:
+      - '3000:3000'
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  nervetrack-data:

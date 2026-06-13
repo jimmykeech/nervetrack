@@ -1,0 +1,23 @@
+# Development override: hot reload for both apps via bind mounts.
+#   docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#
+# Backend runs uvicorn --reload; frontend runs the Vite dev server on 5173.
+
+services:
+  backend:
+    command: ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000', '--reload']
+    volumes:
+      - ./backend/app:/app/app
+      - nervetrack-data:/data
+
+  frontend:
+    image: node:22-slim
+    working_dir: /app
+    command: sh -c "npm install && npm run dev"
+    environment:
+      VITE_API_PROXY: http://backend:8000
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - '5173:5173'
