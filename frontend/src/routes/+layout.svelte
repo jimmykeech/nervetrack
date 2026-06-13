@@ -1,4 +1,6 @@
 <script lang="ts">
+  import '@fontsource-variable/fraunces';
+  import '@fontsource-variable/hanken-grotesk';
   import '../app.css';
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
