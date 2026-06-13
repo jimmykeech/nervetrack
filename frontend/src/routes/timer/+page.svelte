@@ -160,7 +160,7 @@
   }
   .nudge {
     margin-top: 0.75rem;
-    color: var(--amber);
+    color: var(--caution);
     font-weight: 600;
   }
   .postures {
@@ -190,7 +190,7 @@
     text-align: center;
   }
   .tlabel {
-    color: var(--muted);
+    color: var(--text-muted);
     font-size: 0.8rem;
   }
   .tval {
@@ -201,7 +201,7 @@
   .ratio {
     text-align: center;
     margin-top: 0.75rem;
-    color: var(--muted);
+    color: var(--text-muted);
   }
   .link {
     border: none;
@@ -211,10 +211,10 @@
     font-size: 0.9rem;
   }
   .link.danger {
-    color: var(--red);
+    color: var(--bad);
   }
   .live {
-    color: var(--green);
+    color: var(--good);
     font-size: 0.85rem;
   }
 </style>

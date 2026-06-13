@@ -117,7 +117,7 @@
   nav a {
     padding: 0.45rem 0.8rem;
     border-radius: 999px;
-    color: var(--muted);
+    color: var(--text-muted);
     white-space: nowrap;
     border: 1px solid transparent;
   }

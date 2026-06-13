@@ -259,7 +259,7 @@
   .link {
     border: none;
     background: none;
-    color: var(--muted);
+    color: var(--text-muted);
     padding: 0;
     font-size: 0.85rem;
   }
