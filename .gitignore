@@ -1,0 +1,23 @@
+# Python
+backend/.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.duckdb
+*.duckdb.wal
+
+# Node / SvelteKit
+frontend/node_modules/
+frontend/.svelte-kit/
+frontend/build/
+
+# Env & editor
+.env
+.DS_Store
+
+# Visual brainstorming companion
+.superpowers/
+
+# Claude Code local (personal) settings
+.claude/settings.local.json
