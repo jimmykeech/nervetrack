@@ -38,8 +38,12 @@
   .opt {
     flex: 1;
     font-weight: 600;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border-radius: var(--r-pill);
   }
   .opt.on {
     transform: translateY(-1px);
+    color: inherit;
   }
 </style>

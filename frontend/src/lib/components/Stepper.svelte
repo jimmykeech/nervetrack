@@ -51,11 +51,13 @@
   .value {
     min-width: 2.5rem;
     text-align: center;
+    font-family: var(--font-display);
     font-variant-numeric: tabular-nums;
-    font-size: 1.1rem;
+    font-size: 1.35rem;
+    color: var(--text);
   }
   .value.unset {
-    color: var(--muted);
+    color: var(--text-faint);
   }
   .clear {
     padding: 0.3rem 0.5rem;
