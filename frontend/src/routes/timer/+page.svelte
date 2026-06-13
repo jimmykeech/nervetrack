@@ -9,6 +9,12 @@
     sitStandRatio
   } from '$lib/time';
   import type { Posture } from '$lib/types';
+  import RatioBar from '$lib/components/RatioBar.svelte';
+  import { postureColor, POSTURE_META } from '$lib/posture';
+
+  function postureColorVar(p: Posture): string {
+    return POSTURE_META[p].cssVar;
+  }
 
   const store = new TimerStore();
   const NUDGE_SECONDS = 45 * 60;
@@ -50,7 +56,7 @@
 <div class="card display" class:running={!!running}>
   {#if running}
     <div class="posture">{POSTURE_LABEL[running.posture]}</div>
-    <div class="clock">{formatDuration(store.elapsed)}</div>
+    <div class="clock" style="color:{postureColor(running.posture)}">{formatDuration(store.elapsed)}</div>
     {#if running.label}<div class="muted">{running.label}</div>{/if}
   {:else}
     <div class="posture muted">Not tracking</div>
@@ -66,7 +72,11 @@
   <input bind:value={label} placeholder="e.g. work, meeting" />
   <div class="postures">
     {#each POSTURES as p}
-      <button class="pbtn {running?.posture === p ? 'active' : ''}" onclick={() => pick(p)}>
+      <button
+        class="pbtn {running?.posture === p ? 'active' : ''}"
+        style="--pc:var({postureColorVar(p)})"
+        onclick={() => pick(p)}
+      >
         {POSTURE_LABEL[p]}
       </button>
     {/each}
@@ -84,6 +94,7 @@
     {/each}
   </div>
   <div class="ratio">Sit : Stand = <strong>{sitStandRatio(totals)}</strong></div>
+  <div style="margin-top: 0.9rem"><RatioBar {totals} showHeader={false} /></div>
 </div>
 
 <div class="card">
@@ -162,9 +173,9 @@
     font-weight: 600;
   }
   .pbtn.active {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: #03142e;
+    background: var(--pc);
+    border-color: var(--pc);
+    color: #1c130a;
   }
   .stop {
     grid-column: 1 / -1;
