@@ -6,6 +6,8 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth, loadUser, signOut } from '$lib/stores/auth.svelte';
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
+  import { initTheme } from '$lib/stores/theme.svelte';
 
   let { children } = $props();
 
@@ -26,6 +28,7 @@
   }
 
   onMount(async () => {
+    initTheme();
     const user = await loadUser();
     if (!user && !isLogin) goto('/login');
   });
@@ -45,12 +48,13 @@
     <header>
       <div class="topline">
         <div class="brand">NerveTrack</div>
-        {#if auth.user}
-          <div class="account">
+        <div class="account">
+          <ThemeToggle />
+          {#if auth.user}
             <span class="muted small">{auth.user.email}</span>
             <button class="logout" onclick={handleLogout}>Sign out</button>
-          </div>
-        {/if}
+          {/if}
+        </div>
       </div>
       <nav>
         {#each nav as item}
@@ -91,8 +95,9 @@
     margin-bottom: 0.5rem;
   }
   .brand {
+    font-family: var(--font-display);
     font-weight: 700;
-    font-size: 1.15rem;
+    font-size: 1.25rem;
   }
   .account {
     display: flex;
