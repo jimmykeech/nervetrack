@@ -67,9 +67,9 @@
     font-weight: 700;
   }
   .error {
-    color: var(--red);
+    color: var(--bad);
     background: rgba(232, 80, 91, 0.12);
-    border: 1px solid var(--red);
+    border: 1px solid var(--bad);
     border-radius: 8px;
     padding: 0.6rem 0.75rem;
     font-size: 0.9rem;

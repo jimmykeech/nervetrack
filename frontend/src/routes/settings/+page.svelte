@@ -64,7 +64,7 @@
     </button>
   </div>
   {#if result}<p class="saved" style="margin-top: 0.75rem">{result}</p>{/if}
-  {#if error}<p style="color: var(--red); margin-top: 0.75rem">{error}</p>{/if}
+  {#if error}<p style="color: var(--bad); margin-top: 0.75rem">{error}</p>{/if}
 </div>
 
 <div class="card">
