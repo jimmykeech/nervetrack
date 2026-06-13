@@ -3,8 +3,8 @@
   import { api } from '$lib/api';
   import StatusToggle from '$lib/components/StatusToggle.svelte';
   import Stepper from '$lib/components/Stepper.svelte';
+  import RatioBar from '$lib/components/RatioBar.svelte';
   import {
-    formatMinutesish,
     formatMinutesLabel,
     parseDurationToMinutes,
     shiftISODate,
@@ -253,11 +253,7 @@
 </div>
 
 <div class="card totals">
-  <strong>Today's posture time</strong>
-  <div class="muted small" style="margin-top: 0.35rem">
-    Sitting {formatMinutesish(totals.sitting)} · Standing {formatMinutesish(totals.standing)} · Lying
-    {formatMinutesish(totals.lying)} · Walking {formatMinutesish(totals.walking)}
-  </div>
+  <RatioBar {totals} />
   <a href="/timer" class="small">Open timer →</a>
 </div>
 
