@@ -23,6 +23,10 @@
 
   const labels = $derived(stats.map((s) => s.entry_date.slice(5)));
 
+  function token(name: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+  }
+
   function ds(label: string, key: keyof DailyStatPoint, color: string) {
     return {
       label,
@@ -35,22 +39,22 @@
   }
 
   const painDatasets = $derived([
-    ds('Sharp pain episodes', 'sharp_pain_episodes', '#e8505b'),
-    ds('Worst pain', 'worst_pain', '#f5a623'),
-    ds('Tingling level', 'tingling_level', '#4f8cff'),
-    ds('Session intensity', 'session_intensity', '#2ec27e')
+    ds('Sharp pain episodes', 'sharp_pain_episodes', token('--bad')),
+    ds('Worst pain', 'worst_pain', token('--caution')),
+    ds('Tingling level', 'tingling_level', token('--accent')),
+    ds('Session intensity', 'session_intensity', token('--good'))
   ]);
 
   const postureDatasets = $derived([
     {
       label: 'Sitting (min)',
       data: stats.map((s) => s.sitting_minutes),
-      backgroundColor: '#e8505b'
+      backgroundColor: token('--posture-sitting')
     },
     {
       label: 'Standing (min)',
       data: stats.map((s) => s.standing_minutes),
-      backgroundColor: '#2ec27e'
+      backgroundColor: token('--posture-standing')
     }
   ]);
 
@@ -90,10 +94,9 @@
       {#each entries as e}
         <tr>
           <td><a href={`/?date=${e.entry_date}`}>{e.entry_date}</a></td>
-          <td
-            >{#if e.status}<span class="pill {statusClass[e.status]}">{e.status}</span
-              >{:else}—{/if}</td
-          >
+          <td>
+            {#if e.status}<span class="dot {statusClass[e.status]}"></span>{e.status}{:else}—{/if}
+          </td>
           <td>{e.sharp_pain_episodes}</td>
           <td>{e.worst_pain ?? '—'}</td>
           <td>{e.tingling_level ?? '—'}</td>
@@ -106,3 +109,14 @@
     </tbody>
   </table>
 </div>
+
+<style>
+  .dot {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    margin-right: 0.4rem;
+    vertical-align: 0;
+  }
+</style>
