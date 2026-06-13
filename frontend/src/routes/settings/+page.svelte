@@ -2,6 +2,7 @@
   import { api } from '$lib/api';
   import { auth, signOut } from '$lib/stores/auth.svelte';
   import { goto } from '$app/navigation';
+  import ThemeToggle from '$lib/components/ThemeToggle.svelte';
 
   let file = $state<File | null>(null);
 
@@ -42,6 +43,10 @@
       Signed in as <strong>{auth.user.email}</strong>. Your data is private to this account.
     </p>
   {/if}
+  <div class="row" style="align-items: center; gap: 0.6rem; margin-bottom: 0.85rem">
+    <span class="small muted">Theme</span>
+    <ThemeToggle />
+  </div>
   <button onclick={handleLogout}>Sign out</button>
 </div>
 

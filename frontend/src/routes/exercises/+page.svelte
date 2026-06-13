@@ -82,20 +82,25 @@
   }
 
   const progLabels = $derived(progData.map((p) => String(p.performed_at).slice(0, 10)));
+
+  function token(name: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+  }
+
   const progDatasets = $derived([
     {
       label: 'Difficulty',
       data: progData.map((p) => p.difficulty as number | null),
-      borderColor: '#f5a623',
-      backgroundColor: '#f5a623',
+      borderColor: token('--caution'),
+      backgroundColor: token('--caution'),
       tension: 0.25,
       spanGaps: true
     },
     {
       label: 'Weight (kg)',
       data: progData.map((p) => p.weight_kg as number | null),
-      borderColor: '#4f8cff',
-      backgroundColor: '#4f8cff',
+      borderColor: token('--accent'),
+      backgroundColor: token('--accent'),
       tension: 0.25,
       spanGaps: true
     }
