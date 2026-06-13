@@ -40,6 +40,10 @@
   let canvas: HTMLCanvasElement;
   let chart: Chart | null = null;
 
+  function token(name: string): string {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || '#888';
+  }
+
   function render() {
     if (!canvas) return;
     chart?.destroy();
@@ -51,18 +55,31 @@
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         scales: {
-          x: { ticks: { color: '#93a1b5', maxRotation: 0, autoSkip: true } },
-          y: { ticks: { color: '#93a1b5' }, grid: { color: '#2e3a4d' } }
+          x: { ticks: { color: token('--text-muted'), maxRotation: 0, autoSkip: true } },
+          y: { ticks: { color: token('--text-muted') }, grid: { color: token('--border') } }
         },
         plugins: {
-          legend: { labels: { color: '#e6ebf2' } }
+          legend: { labels: { color: token('--text') } }
         }
       }
     });
   }
 
-  onMount(render);
-  onDestroy(() => chart?.destroy());
+  let observer: MutationObserver | null = null;
+
+  onMount(() => {
+    render();
+    // Re-render when the theme flips so axes/legend recolour for the new mode.
+    observer = new MutationObserver(render);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-theme']
+    });
+  });
+  onDestroy(() => {
+    observer?.disconnect();
+    chart?.destroy();
+  });
 
   // Re-render when inputs change.
   $effect(() => {
