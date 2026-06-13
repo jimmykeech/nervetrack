@@ -4,12 +4,7 @@
   import StatusToggle from '$lib/components/StatusToggle.svelte';
   import Stepper from '$lib/components/Stepper.svelte';
   import RatioBar from '$lib/components/RatioBar.svelte';
-  import {
-    formatMinutesLabel,
-    parseDurationToMinutes,
-    shiftISODate,
-    todayISO
-  } from '$lib/time';
+  import { formatMinutesLabel, parseDurationToMinutes, shiftISODate, todayISO } from '$lib/time';
   import type { DailyEntry, Status } from '$lib/types';
 
   let date = $state($page.url.searchParams.get('date') ?? todayISO());

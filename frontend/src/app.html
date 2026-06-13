@@ -7,7 +7,10 @@
           var k = 'nervetrack-theme',
             s = localStorage.getItem(k);
           var sys = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-          document.documentElement.setAttribute('data-theme', s === 'light' || s === 'dark' ? s : sys);
+          document.documentElement.setAttribute(
+            'data-theme',
+            s === 'light' || s === 'dark' ? s : sys
+          );
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'dark');
         }
