@@ -56,7 +56,9 @@
 <div class="card display" class:running={!!running}>
   {#if running}
     <div class="posture">{POSTURE_LABEL[running.posture]}</div>
-    <div class="clock" style="color:{postureColor(running.posture)}">{formatDuration(store.elapsed)}</div>
+    <div class="clock" style="color:{postureColor(running.posture)}">
+      {formatDuration(store.elapsed)}
+    </div>
     {#if running.label}<div class="muted">{running.label}</div>{/if}
   {:else}
     <div class="posture muted">Not tracking</div>

@@ -2,7 +2,12 @@
   import { themeState, toggleTheme } from '$lib/stores/theme.svelte';
 </script>
 
-<button class="theme" onclick={toggleTheme} aria-label="Toggle light/dark theme" title="Toggle theme">
+<button
+  class="theme"
+  onclick={toggleTheme}
+  aria-label="Toggle light/dark theme"
+  title="Toggle theme"
+>
   {themeState.theme === 'dark' ? '☾' : '☀'}
 </button>
 
