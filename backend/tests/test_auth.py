@@ -54,10 +54,10 @@ def test_allowed_email_logs_in(client, oauth_env, monkeypatch):
 def test_returning_user_logs_in_again(client, oauth_env, monkeypatch):
     """A second login of the same account must not 500.
 
-    Regression: the first login INSERTs the user and seeds FK-referencing rows
-    (exercises, settings). On the next login upsert_user took an UPDATE branch,
-    which DuckDB rejects because the users row is now referenced by a foreign key
-    in another table — surfacing as a 500 on the OAuth callback.
+    Regression guard: upsert_user is find-or-create (it does not UPDATE the
+    existing users row). The original DuckDB engine 500'd here because it could
+    not UPDATE a row referenced by a foreign key; this test keeps the second
+    login working regardless of engine.
     """
     _mock_google(monkeypatch, "allowed@example.com", sub="sub-repeat")
 
