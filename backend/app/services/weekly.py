@@ -148,9 +148,13 @@ def list_weeks(db: Database, user_id: UUID) -> list[WeeklySummary]:
     )
     if not bounds or bounds["lo"] is None:
         return []
+    lo = bounds["lo"]
+    hi = bounds["hi"]
+    lo = date.fromisoformat(lo) if isinstance(lo, str) else lo
+    hi = date.fromisoformat(hi) if isinstance(hi, str) else hi
     start_day = configured_week_start_day(db, user_id)
-    cursor = week_start_for(bounds["lo"], start_day)
-    last = week_start_for(bounds["hi"], start_day)
+    cursor = week_start_for(lo, start_day)
+    last = week_start_for(hi, start_day)
     weeks: list[WeeklySummary] = []
     while cursor <= last:
         weeks.append(get_week(db, user_id, cursor))

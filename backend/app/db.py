@@ -8,7 +8,6 @@ service layer sees the same types it saw under the previous engine.
 
 from __future__ import annotations
 
-import re
 import sqlite3
 import threading
 import uuid
@@ -22,9 +21,6 @@ from typing import Any
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
 
 
-_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-
-
 def _register_types() -> None:
     # Write side: rich Python types -> canonical TEXT (UUIDs in dashed form).
     sqlite3.register_adapter(uuid.UUID, str)
@@ -33,7 +29,7 @@ def _register_types() -> None:
     # Decimal columns (e.g. DECIMAL(3,1)) stored as real; the converter restores
     # Decimal with one decimal place so round-trips preserve trailing zeroes.
     sqlite3.register_adapter(Decimal, float)
-    sqlite3.register_converter("DECIMAL", lambda b: Decimal(b.decode()).quantize(Decimal("0.1")))
+    sqlite3.register_converter("DECIMAL", lambda b: Decimal(b.decode()))
     # Read side: driven by each column's declared type via PARSE_DECLTYPES.
     sqlite3.register_converter("UUID", lambda b: uuid.UUID(b.decode()))
     sqlite3.register_converter("TIMESTAMP", lambda b: datetime.fromisoformat(b.decode()))
@@ -53,8 +49,6 @@ class Database:
         self._path = db_path
         if db_path != ":memory:":
             Path(db_path).parent.mkdir(parents=True, exist_ok=True)
-        self._all_conns: list[sqlite3.Connection] = []
-        self._reg_lock = threading.Lock()
         self._local = threading.local()
         # Open the creating thread's connection eagerly so WAL mode (database-level,
         # persistent) is set before any reads/writes.
@@ -65,7 +59,6 @@ class Database:
             self._path,
             detect_types=sqlite3.PARSE_DECLTYPES,
             isolation_level=None,  # autocommit; explicit transactions via cursor()
-            check_same_thread=False,  # connections live in _all_conns and are closed by any thread
         )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")  # idempotent; persists in the file
@@ -73,8 +66,6 @@ class Database:
         conn.execute("PRAGMA busy_timeout=5000")
         conn.execute("PRAGMA synchronous=NORMAL")
         conn.create_function("gen_random_uuid", 0, _gen_uuid)
-        with self._reg_lock:
-            self._all_conns.append(conn)
         return conn
 
     @property
@@ -107,15 +98,7 @@ class Database:
         self, sql: str, params: list[Any] | tuple[Any, ...] | None = None
     ) -> list[dict[str, Any]]:
         cur = self._conn.execute(sql, params or [])
-        rows = [dict(row) for row in cur.fetchall()]
-        # PARSE_DECLTYPES fires on declared column types but not on aggregate
-        # expressions (e.g. MIN(entry_date) AS lo). Coerce ISO-date strings
-        # so the service layer always receives date objects for date columns.
-        for row in rows:
-            for k, v in row.items():
-                if isinstance(v, str) and _ISO_DATE_RE.match(v):
-                    row[k] = date.fromisoformat(v)
-        return rows
+        return [dict(row) for row in cur.fetchall()]
 
     def query_one(
         self, sql: str, params: list[Any] | tuple[Any, ...] | None = None
@@ -144,11 +127,10 @@ class Database:
             conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", [version])
 
     def close(self) -> None:
-        with self._reg_lock:
-            for conn in self._all_conns:
-                conn.close()
-            self._all_conns.clear()
-        self._local = threading.local()
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            conn.close()
+            self._local.conn = None
 
 
 _db: Database | None = None
