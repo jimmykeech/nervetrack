@@ -20,8 +20,10 @@ from app.services.seed import seed_user
 
 
 @pytest.fixture()
-def db() -> Database:
-    database = Database(":memory:")
+def db(tmp_path) -> Database:
+    # File-backed (not :memory:) so thread-local connections opened by TestClient
+    # request threads all see the same database.
+    database = Database(str(tmp_path / "test.db"))
     database.migrate()
     db_module._db = database
     yield database
