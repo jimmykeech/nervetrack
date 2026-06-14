@@ -1,8 +1,8 @@
-# NerveTrack backend — FastAPI + DuckDB.
+# NerveTrack backend — FastAPI + SQLite (replicated to Tigris via Litestream).
 #
 # PRIVATE app: it has no public HTTP service, so it is only reachable from the
 # frontend over Fly's 6PN private network at http://nervetrack-backend.internal:8000.
-# DuckDB is single-writer, so this app runs as exactly ONE always-on machine
+# SQLite is single-writer, so this app runs as exactly ONE always-on machine
 # bound to one persistent volume. Do not scale it past 1.
 #
 # Rename `app` below if "nervetrack-backend" is taken globally — and update the
@@ -24,7 +24,7 @@ primary_region = "syd"
   dockerfile = "Dockerfile"
 
 [env]
-  NERVETRACK_DB_PATH = "/data/nervetrack.duckdb"
+  NERVETRACK_DB_PATH = "/data/nervetrack.db"
   NERVETRACK_TIMEZONE = "Australia/Sydney"
   # Served over HTTPS in prod, so the session cookie must be Secure.
   NERVETRACK_COOKIE_SECURE = "true"
@@ -54,4 +54,6 @@ primary_region = "syd"
   path = "/healthz"
   interval = "15s"
   timeout = "2s"
-  grace_period = "10s"
+  # Generous grace: on host-loss recovery the app restores the DB from Tigris
+  # before uvicorn starts, so don't let the check kill the machine mid-restore.
+  grace_period = "30s"

@@ -4,8 +4,9 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
-*.duckdb
-*.duckdb.wal
+*.db
+*.db-wal
+*.db-shm
 
 # Node / SvelteKit
 frontend/node_modules/
