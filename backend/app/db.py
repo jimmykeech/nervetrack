@@ -8,16 +8,21 @@ service layer sees the same types it saw under the previous engine.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 import threading
 import uuid
 from collections.abc import Iterator
 from contextlib import contextmanager
 from datetime import date, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
 MIGRATIONS_DIR = Path(__file__).parent / "migrations"
+
+
+_ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _register_types() -> None:
@@ -25,6 +30,10 @@ def _register_types() -> None:
     sqlite3.register_adapter(uuid.UUID, str)
     sqlite3.register_adapter(datetime, lambda d: d.isoformat())
     sqlite3.register_adapter(date, lambda d: d.isoformat())
+    # Decimal columns (e.g. DECIMAL(3,1)) stored as real; the converter restores
+    # Decimal with one decimal place so round-trips preserve trailing zeroes.
+    sqlite3.register_adapter(Decimal, float)
+    sqlite3.register_converter("DECIMAL", lambda b: Decimal(b.decode()).quantize(Decimal("0.1")))
     # Read side: driven by each column's declared type via PARSE_DECLTYPES.
     sqlite3.register_converter("UUID", lambda b: uuid.UUID(b.decode()))
     sqlite3.register_converter("TIMESTAMP", lambda b: datetime.fromisoformat(b.decode()))
@@ -56,6 +65,7 @@ class Database:
             self._path,
             detect_types=sqlite3.PARSE_DECLTYPES,
             isolation_level=None,  # autocommit; explicit transactions via cursor()
+            check_same_thread=False,  # connections live in _all_conns and are closed by any thread
         )
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")  # idempotent; persists in the file
@@ -97,7 +107,15 @@ class Database:
         self, sql: str, params: list[Any] | tuple[Any, ...] | None = None
     ) -> list[dict[str, Any]]:
         cur = self._conn.execute(sql, params or [])
-        return [dict(row) for row in cur.fetchall()]
+        rows = [dict(row) for row in cur.fetchall()]
+        # PARSE_DECLTYPES fires on declared column types but not on aggregate
+        # expressions (e.g. MIN(entry_date) AS lo). Coerce ISO-date strings
+        # so the service layer always receives date objects for date columns.
+        for row in rows:
+            for k, v in row.items():
+                if isinstance(v, str) and _ISO_DATE_RE.match(v):
+                    row[k] = date.fromisoformat(v)
+        return rows
 
     def query_one(
         self, sql: str, params: list[Any] | tuple[Any, ...] | None = None
