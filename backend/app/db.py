@@ -34,7 +34,7 @@ def _register_types() -> None:
     sqlite3.register_converter("UUID", lambda b: uuid.UUID(b.decode()))
     sqlite3.register_converter("TIMESTAMP", lambda b: datetime.fromisoformat(b.decode()))
     sqlite3.register_converter("DATE", lambda b: date.fromisoformat(b.decode()))
-    sqlite3.register_converter("BOOLEAN", lambda b: b not in (b"0", b"false", b"FALSE"))
+    sqlite3.register_converter("BOOLEAN", lambda b: b != b"0")
 
 
 _register_types()
@@ -122,11 +122,21 @@ class Database:
             try:
                 conn.executescript("BEGIN;\n" + path.read_text() + "\nCOMMIT;")
             except Exception:
-                conn.executescript("ROLLBACK;")
+                # The in-script BEGIN leaves an open transaction on failure; roll it
+                # back with execute() (NOT executescript, which would COMMIT first).
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
                 raise
             conn.execute("INSERT INTO schema_migrations (version) VALUES (?)", [version])
 
     def close(self) -> None:
+        # Per-thread worker connections are intentionally process-lifetime and are
+        # closed on process/thread exit.  WAL replication and checkpointing are
+        # handled by Litestream (added in a later task), so an explicit app-side
+        # checkpoint is intentionally absent here to avoid conflicting with it.
+        # This method only closes the calling thread's connection.
         conn = getattr(self._local, "conn", None)
         if conn is not None:
             conn.close()
