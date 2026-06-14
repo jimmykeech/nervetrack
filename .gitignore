@@ -19,5 +19,5 @@ frontend/build/
 # Visual brainstorming companion
 .superpowers/
 
-# Claude Code local (personal) settings
-.claude/settings.local.json
+# Claude Code (local/personal config — not shared)
+.claude/
