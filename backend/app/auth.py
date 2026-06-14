@@ -62,12 +62,11 @@ def upsert_user(
 ) -> tuple[UUID, bool]:
     """Find-or-create a user by Google subject. Returns (user_id, created).
 
-    We deliberately do NOT refresh email/name for an existing user. DuckDB
-    refuses to UPDATE a ``users`` row once it is referenced by a foreign key in
-    another table (exercises, sessions, entries, ...) — even when only non-key
-    columns change — so an UPDATE here fails on every login after the first. The
-    Google subject is the stable identity, so find-or-create is sufficient; the
-    stored email/name simply reflect what Google returned at signup.
+    Existing users are returned as-is; we do not refresh email/name on login.
+    The Google subject is the stable identity, so find-or-create is sufficient and
+    the stored email/name reflect what Google returned at signup. (Refreshing them
+    would be safe under SQLite if ever wanted — this find-or-create shape was first
+    forced by the old DuckDB engine, which could not UPDATE a FK-referenced row.)
     """
     existing = db.query_one("SELECT id FROM users WHERE google_sub = ?", [google_sub])
     if existing:

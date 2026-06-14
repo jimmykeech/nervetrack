@@ -1,7 +1,8 @@
 """Shared pytest fixtures.
 
-Each test gets a fresh in-memory DuckDB. Most fixtures also create a seeded test
-user; ``auth_client`` is a TestClient carrying that user's session cookie.
+Each test gets a fresh file-backed SQLite database (via ``tmp_path``). Most
+fixtures also create a seeded test user; ``auth_client`` is a TestClient
+carrying that user's session cookie.
 """
 
 from __future__ import annotations
@@ -20,8 +21,10 @@ from app.services.seed import seed_user
 
 
 @pytest.fixture()
-def db() -> Database:
-    database = Database(":memory:")
+def db(tmp_path) -> Database:
+    # File-backed (not :memory:) so thread-local connections opened by TestClient
+    # request threads all see the same database.
+    database = Database(str(tmp_path / "test.db"))
     database.migrate()
     db_module._db = database
     yield database
@@ -55,7 +58,7 @@ def user_id(db: Database) -> UUID:
 
 @pytest.fixture()
 def client(db: Database) -> TestClient:
-    # Unauthenticated client (lifespan skipped — the in-memory db fixture stands in).
+    # Unauthenticated client (lifespan skipped — the file-backed db fixture stands in).
     return TestClient(create_app(), raise_server_exceptions=True)
 
 
