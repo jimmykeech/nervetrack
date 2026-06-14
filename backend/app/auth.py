@@ -60,13 +60,17 @@ def user_for_token(db: Database, token: str) -> dict[str, Any] | None:
 def upsert_user(
     db: Database, google_sub: str, email: str, name: str | None
 ) -> tuple[UUID, bool]:
-    """Find-or-create a user by Google subject. Returns (user_id, created)."""
+    """Find-or-create a user by Google subject. Returns (user_id, created).
+
+    We deliberately do NOT refresh email/name for an existing user. DuckDB
+    refuses to UPDATE a ``users`` row once it is referenced by a foreign key in
+    another table (exercises, sessions, entries, ...) — even when only non-key
+    columns change — so an UPDATE here fails on every login after the first. The
+    Google subject is the stable identity, so find-or-create is sufficient; the
+    stored email/name simply reflect what Google returned at signup.
+    """
     existing = db.query_one("SELECT id FROM users WHERE google_sub = ?", [google_sub])
     if existing:
-        db.execute(
-            "UPDATE users SET email = ?, name = ? WHERE id = ?",
-            [email, name, existing["id"]],
-        )
         return existing["id"], False
     created = db.query_one(
         "INSERT INTO users (google_sub, email, name) VALUES (?, ?, ?) RETURNING id",
