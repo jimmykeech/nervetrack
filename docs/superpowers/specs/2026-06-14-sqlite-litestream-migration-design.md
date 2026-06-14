@@ -33,6 +33,10 @@ OLTP limitations (the FK-update restriction that broke returning logins).
   restore-on-boot was rejected: no cost saving (volume is free) and it makes
   restore-on-boot a single point of failure for normal restarts.
 - **Single backend machine**, `immediate` deploy strategy — unchanged.
+- **Thread-local SQLite connections** (not a single global connection + lock). Each
+  worker thread gets its own connection so WAL's multi-reader concurrency is used;
+  `busy_timeout` handles the rare writer contention. The idiomatic SQLite model, and
+  cheap to land now since we're already rewriting `db.py`.
 
 ## Out of scope
 
@@ -66,16 +70,22 @@ exec litestream replicate -config /etc/litestream.yml \
 ### 2. SQLite driver & concurrency
 
 Stdlib `sqlite3`, preserving `db.py`'s public interface
-(`cursor/execute/query/query_one/migrate`) so the service layer barely changes.
+(`cursor/execute/query/query_one/migrate`) so the service layer and tests don't
+change — only `db.py`'s internals do.
 
-- One shared connection: `check_same_thread=False`, autocommit
-  (`isolation_level=None`, matching today's DuckDB autocommit usage), guarded by the
-  existing `RLock`. FastAPI sync endpoints run in a threadpool; the lock serialises
-  access, making `check_same_thread=False` safe.
-- PRAGMAs on connect: `journal_mode=WAL` (required by Litestream),
-  `busy_timeout=5000`, `synchronous=NORMAL` (safe under WAL), and
+- **Thread-local connections:** each worker thread lazily opens its own
+  `sqlite3.Connection` (via `threading.local()`). No global lock — WAL gives multiple
+  concurrent readers, and SQLite's single-writer rule is handled by `busy_timeout`
+  (writers wait rather than erroring with `SQLITE_BUSY`). Each connection is used by
+  exactly one thread, so `check_same_thread` is not relaxed. FastAPI sync endpoints
+  run in anyio's threadpool, so a bounded set of connections is created and reused.
+- **PRAGMAs applied per connection** on open (they are connection-scoped, not
+  database-scoped): `busy_timeout=5000`, `synchronous=NORMAL`, and
   **`foreign_keys=ON`** (SQLite enforces FKs per-connection; the schema depends on
-  them).
+  them). `journal_mode=WAL` is database-level (persists), set once at init.
+- **Atomic multi-statement units** (the migration runner; any future "do N writes as
+  one") use an explicit transaction on the calling thread's connection via the
+  `cursor()` contextmanager. `migrate()` runs on the startup thread's connection.
 - Type handling: register `sqlite3` adapters so `uuid.UUID` params serialise to TEXT
   and `datetime` to ISO strings; UUIDs/timestamps stored as TEXT, Pydantic parses
   them back. Dict `row_factory` as today.
@@ -136,12 +146,18 @@ in.
 
 ### 5. Testing
 
-- The existing 31 tests are the regression net. The `db` fixture switches from
-  DuckDB `:memory:` to SQLite `:memory:` (same `Database` interface). A green full
-  suite on SQLite is the migration's correctness gate.
+- The existing 31 tests are the regression net (same `Database` interface). A green
+  full suite on SQLite is the migration's correctness gate.
+- **Test DB must be file-backed, not `:memory:`.** Thread-local connections to plain
+  `:memory:` each get a *separate* database, so a TestClient request (handled on a
+  threadpool thread) would see an empty DB the test fixture never populated. The `db`
+  fixture therefore creates the SQLite DB at a `tmp_path` file (WAL works on a file);
+  thread-local connections all open the same file and see the same data. (Shared-cache
+  `file::memory:?cache=shared` is the alternative; tmp-file is simpler and chosen.)
 - New focused tests for behaviour-sensitive changes: timer-duration math (the
-  `julianday` arithmetic) and timestamp round-tripping (write via `now_utc()`, read
-  back, compare).
+  `julianday` arithmetic), timestamp round-tripping (write via `now_utc()`, read back,
+  compare), and a concurrency smoke test that interleaved reads/writes across threads
+  succeed under `busy_timeout` (validates the thread-local model).
 - Litestream itself is validated operationally (Section 6), not unit-tested.
 - CI backend job unchanged (`ruff` + `pytest`); deploy smoke test still asserts the
   live `401`.
@@ -167,3 +183,7 @@ in.
    newer SQLite if needed.
 3. **Restore-on-boot correctness** — verified operationally by an actual restore test
    during cutover, not assumed.
+4. **Thread-local connection model** — two consequences to handle: (a) writer
+   contention surfaces as `SQLITE_BUSY`, mitigated by `busy_timeout` and covered by
+   the concurrency test; (b) the test DB must be file-backed, since thread-local
+   connections to `:memory:` would each get a separate database (Section 5).
