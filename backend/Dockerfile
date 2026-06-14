@@ -12,14 +12,18 @@ RUN pip install --upgrade pip && pip install .
 
 COPY app ./app
 
-# DuckDB file lives on a mounted volume.
-ENV NERVETRACK_DB_PATH=/data/nervetrack.duckdb
+# Litestream binary (pinned). Verify the tag against the current release.
+COPY --from=litestream/litestream:0.3.13 /usr/local/bin/litestream /usr/local/bin/litestream
+
+COPY litestream.yml /etc/litestream.yml
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# SQLite file lives on a mounted volume.
+ENV NERVETRACK_DB_PATH=/data/nervetrack.db
 VOLUME ["/data"]
 
 EXPOSE 8000
 
-# Bind IPv6 (::), not 0.0.0.0. Fly's private network (<app>.internal, used by the
-# frontend to reach this service) is IPv6-only; a 0.0.0.0 bind is IPv4-only and
-# silently unreachable over 6PN. On Linux `::` is dual-stack, so IPv4 health
-# checks and the local docker-compose IPv4 path keep working too.
-CMD ["uvicorn", "app.main:app", "--host", "::", "--port", "8000"]
+# Litestream supervises uvicorn (binds IPv6 :: for Fly 6PN; see git history).
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
