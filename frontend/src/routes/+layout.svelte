@@ -30,7 +30,10 @@
   onMount(async () => {
     initTheme();
     const user = await loadUser();
-    if (!user && !isLogin) goto('/login');
+    // Only bounce to /login for a genuine "not signed in". On a backend error
+    // stay put and surface it (see the error block in <main>) rather than
+    // looping to a login page whose Google button hits the same failure.
+    if (!user && !auth.error && !isLogin) goto('/login');
   });
 
   async function handleLogout() {
@@ -65,6 +68,11 @@
     <main>
       {#if auth.ready && auth.user}
         {@render children()}
+      {:else if auth.ready && auth.error}
+        <div class="card loaderr">
+          <p>Couldn’t reach the server.</p>
+          <button onclick={() => location.reload()}>Retry</button>
+        </div>
       {/if}
     </main>
   </div>
@@ -80,6 +88,13 @@
     max-width: var(--maxw);
     margin: 0 auto;
     padding: 0 1rem;
+  }
+  .loaderr {
+    margin-top: 2rem;
+    text-align: center;
+  }
+  .loaderr button {
+    margin-top: 0.75rem;
   }
   header {
     position: sticky;
