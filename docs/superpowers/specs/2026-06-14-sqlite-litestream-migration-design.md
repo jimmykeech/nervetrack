@@ -86,9 +86,17 @@ change — only `db.py`'s internals do.
 - **Atomic multi-statement units** (the migration runner; any future "do N writes as
   one") use an explicit transaction on the calling thread's connection via the
   `cursor()` contextmanager. `migrate()` runs on the startup thread's connection.
-- Type handling: register `sqlite3` adapters so `uuid.UUID` params serialise to TEXT
-  and `datetime` to ISO strings; UUIDs/timestamps stored as TEXT, Pydantic parses
-  them back. Dict `row_factory` as today.
+- Type handling: open connections with `detect_types=PARSE_DECLTYPES` and register
+  `sqlite3` adapters **and converters** so the DB layer round-trips the same rich
+  Python types DuckDB did — important because service code (e.g.
+  `timer.patch_interval`) does `datetime` arithmetic directly on query results.
+  Adapters: `uuid.UUID`→canonical dashed str, `datetime`/`date`→`.isoformat()`.
+  Converters (by declared type): `UUID`→`uuid.UUID`, `TIMESTAMP`→
+  `datetime.fromisoformat`, `DATE`→`date.fromisoformat`, `BOOLEAN`→`bool`. The schema
+  keeps declared column types (`UUID`/`TIMESTAMP`/`DATE`/`BOOLEAN`) so converters fire
+  on `SELECT *`/`RETURNING *`. Dict `row_factory` as today.
+- **UUID text is canonical dashed form on both sides** (adapter emits dashed, the
+  `gen_random_uuid()` default emits dashed), so foreign-key string values match.
 - Litestream owns checkpointing; the app issues no manual `wal_checkpoint`.
 
 ### 3. SQLite dialect translation
@@ -98,9 +106,12 @@ Schema (`migrations/0001_initial.sql`) and a few service queries.
 Schema:
 - `UUID` → `TEXT`, `TIMESTAMP` → `TEXT`, `BOOLEAN` → `INTEGER` (`TRUE`/`FALSE`
   literals supported; `DEFAULT FALSE` works).
-- `DEFAULT gen_random_uuid()` → `DEFAULT (lower(hex(randomblob(16))))`. SQLite can't
-  call functions in a DDL default, but `randomblob` is allowed; 32 random hex chars
-  parse cleanly as a UUID. Keeps existing INSERTs that rely on the default working.
+- `DEFAULT gen_random_uuid()` → a `randomblob` expression that emits a **canonical
+  dashed UUID** (8-4-4-4-12 hex), so DB-generated ids match `str(uuid.UUID)` from the
+  adapter (FK consistency):
+  `DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6))))`.
+  SQLite can't call functions in a DDL default, but `randomblob` is allowed. Keeps
+  existing INSERTs that rely on the default working.
 - `DEFAULT now()` → a `strftime` default that matches `now_utc()`'s format:
   `DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now'))`. NOT `CURRENT_TIMESTAMP`, which
   emits a different format (`YYYY-MM-DD HH:MM:SS`, no `T`, no fractional seconds) and
