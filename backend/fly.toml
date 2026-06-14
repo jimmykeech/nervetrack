@@ -24,7 +24,7 @@ primary_region = "syd"
   dockerfile = "Dockerfile"
 
 [env]
-  NERVETRACK_DB_PATH = "/data/nervetrack.duckdb"
+  NERVETRACK_DB_PATH = "/data/nervetrack.db"
   NERVETRACK_TIMEZONE = "Australia/Sydney"
   # Served over HTTPS in prod, so the session cookie must be Secure.
   NERVETRACK_COOKIE_SECURE = "true"
