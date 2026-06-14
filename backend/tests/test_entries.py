@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
 from app.models.entries import DailyEntryUpsert
 from app.services import entries as service
@@ -17,7 +18,7 @@ def test_upsert_creates_then_updates(db, user_id):
     # A partial update leaves unspecified fields untouched.
     second = service.upsert_entry(db, user_id, d, DailyEntryUpsert(tingling_level=3))
     assert second.status == "G"
-    assert str(second.tingling_level) == "3.0"
+    assert second.tingling_level == Decimal("3")
     assert second.notes == "ok"
 
     rows = db.query("SELECT * FROM daily_entries WHERE entry_date = ?", [d])
@@ -32,7 +33,7 @@ def test_pain_event_updates_summary(db, user_id):
     entry = service.get_entry(db, user_id, d)
     assert entry is not None
     assert entry.sharp_pain_episodes == 2
-    assert str(entry.worst_pain) == "5.0"
+    assert entry.worst_pain == Decimal("5")
     assert len(entry.pain_events) == 2
 
 
@@ -44,7 +45,7 @@ def test_delete_pain_event_recomputes(db, user_id):
     entry = service.get_entry(db, user_id, d)
     assert entry is not None
     assert entry.sharp_pain_episodes == 1
-    assert str(entry.worst_pain) == "2.0"
+    assert entry.worst_pain == Decimal("2")
 
 
 def test_api_upsert_and_validation(auth_client):
