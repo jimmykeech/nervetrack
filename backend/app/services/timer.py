@@ -15,8 +15,10 @@ from app.models.timer import DayTimer, Interval
 from app.services.timeutil import local_date, now_utc, to_utc_naive
 
 # Live duration for an interval: stored seconds once stopped, else elapsed-so-far.
+# julianday() parses ISO-8601 text and treats naive timestamps as UTC, matching now_utc().
 _LIVE_SECONDS = (
-    "COALESCE(duration_seconds, CAST(date_part('epoch', now() - started_at) AS INTEGER))"
+    "COALESCE(duration_seconds, "
+    "CAST((julianday('now') - julianday(started_at)) * 86400 AS INTEGER))"
 )
 
 
@@ -36,7 +38,7 @@ def stop_running(db: Database, user_id: UUID, at: datetime | None = None) -> Int
         """
         UPDATE sit_stand_sessions
         SET ended_at = ?,
-            duration_seconds = CAST(date_part('epoch', ? - started_at) AS INTEGER)
+            duration_seconds = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER)
         WHERE user_id = ? AND ended_at IS NULL
         RETURNING *
         """,
