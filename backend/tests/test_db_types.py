@@ -1,8 +1,15 @@
+"""SQLite layer: rich-type round-tripping and thread-local concurrency."""
+
 from __future__ import annotations
 
 import sqlite3
+import threading
+from datetime import datetime, timedelta
+from uuid import UUID
 
 import pytest
+
+from app.services.timeutil import now_utc
 
 
 def test_failed_migration_rolls_back(tmp_path):
@@ -30,3 +37,87 @@ def test_failed_migration_rolls_back(tmp_path):
         database.close()
     finally:
         db_module.MIGRATIONS_DIR = orig
+
+
+def test_uuid_and_timestamp_round_trip(db):
+    # users.id (UUID default) + created_at (TIMESTAMP default) come back as rich types.
+    db.execute("INSERT INTO users (email) VALUES (?)", ["round@trip.test"])
+    row = db.query_one("SELECT id, email, created_at FROM users WHERE email = ?", ["round@trip.test"])
+    assert isinstance(row["id"], UUID)
+    assert isinstance(row["created_at"], datetime)
+
+
+def test_uuid_param_matches_foreign_key(db):
+    # A UUID read back and used as an FK param must match the stored id (dashed form).
+    db.execute("INSERT INTO users (email) VALUES (?)", ["fk@trip.test"])
+    user_id = db.query_one("SELECT id FROM users WHERE email = ?", ["fk@trip.test"])["id"]
+    assert isinstance(user_id, UUID)
+    db.execute(
+        "INSERT INTO exercises (user_id, name) VALUES (?, ?)", [user_id, "Test Exercise"]
+    )
+    got = db.query_one("SELECT user_id FROM exercises WHERE name = ?", ["Test Exercise"])
+    assert got["user_id"] == user_id
+
+
+def test_boolean_round_trip(db):
+    db.execute("INSERT INTO users (email) VALUES (?)", ["bool@trip.test"])
+    uid = db.query_one("SELECT id FROM users WHERE email = ?", ["bool@trip.test"])["id"]
+    db.execute(
+        "INSERT INTO daily_entries (user_id, entry_date, iced) VALUES (?, ?, ?)",
+        [uid, "2026-06-14", True],
+    )
+    row = db.query_one("SELECT iced, strengthening_done FROM daily_entries WHERE user_id = ?", [uid])
+    assert row["iced"] is True
+    assert row["strengthening_done"] is False  # column default FALSE
+
+
+def test_concurrent_writes_serialise_without_error(db):
+    # Thread-local connections + busy_timeout: parallel writers must all succeed.
+    db.execute("INSERT INTO users (email) VALUES (?)", ["conc@trip.test"])
+    uid = db.query_one("SELECT id FROM users WHERE email = ?", ["conc@trip.test"])["id"]
+    errors: list[Exception] = []
+
+    def writer(n: int) -> None:
+        try:
+            db.execute(
+                "INSERT INTO sit_stand_sessions (user_id, entry_date, posture, started_at) "
+                "VALUES (?, ?, ?, ?)",
+                [uid, "2026-06-14", "sitting", now_utc()],
+            )
+        except Exception as e:  # noqa: BLE001
+            errors.append(e)
+
+    threads = [threading.Thread(target=writer, args=(i,)) for i in range(10)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert errors == []
+    count = db.query_one(
+        "SELECT COUNT(*) AS c FROM sit_stand_sessions WHERE user_id = ?", [uid]
+    )["c"]
+    assert count == 10
+
+
+def test_stop_updates_duration_via_julianday(db):
+    # The epoch->julianday change: a 90s interval must compute ~90 stored seconds.
+    db.execute("INSERT INTO users (email) VALUES (?)", ["dur@trip.test"])
+    uid = db.query_one("SELECT id FROM users WHERE email = ?", ["dur@trip.test"])["id"]
+    started = now_utc() - timedelta(seconds=90)
+    db.execute(
+        "INSERT INTO sit_stand_sessions (user_id, entry_date, posture, started_at) "
+        "VALUES (?, ?, ?, ?)",
+        [uid, "2026-06-14", "sitting", started],
+    )
+    ended = started + timedelta(seconds=90)
+    db.execute(
+        "UPDATE sit_stand_sessions SET ended_at = ?, "
+        "duration_seconds = CAST((julianday(?) - julianday(started_at)) * 86400 AS INTEGER) "
+        "WHERE user_id = ? AND ended_at IS NULL",
+        [ended, ended, uid],
+    )
+    row = db.query_one(
+        "SELECT duration_seconds FROM sit_stand_sessions WHERE user_id = ?", [uid]
+    )
+    assert abs(row["duration_seconds"] - 90) <= 1
