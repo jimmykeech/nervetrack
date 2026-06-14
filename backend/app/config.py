@@ -10,8 +10,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NERVETRACK_", env_file=".env", extra="ignore")
 
-    # Path to the single persistent DuckDB file. The backend is the only writer.
-    db_path: str = "/data/nervetrack.duckdb"
+    # Path to the SQLite database file.
+    db_path: str = "/data/nervetrack.db"
 
     # Local timezone used to derive calendar dates from UTC timestamps.
     timezone: str = "Australia/Sydney"
