@@ -20,10 +20,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      - name: Deploy backend
         working-directory: backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          # The backend is a single machine with an attached volume, so flyctl
+          # updates it IN PLACE (stop → swap image → start) rather than rolling.
+          # During that brief restart its post-deploy health-check poll can fail
+          # with "net/http: request canceled" even though the machine comes up
+          # healthy. So: give flyctl a longer wait, and if it still reports
+          # failure, verify the app is actually serving and only fail the job on a
+          # genuine outage. A healthy backend answers /api/v1/auth/me with 401.
+          if flyctl deploy --remote-only --wait-timeout 300; then
+            exit 0
+          fi
+          echo "::warning::flyctl deploy reported failure — verifying app health directly"
+          flyctl status -a nervetrack-backend || true
+          flyctl checks list -a nervetrack-backend || true
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            https://nervetrack.jameskeech.io/api/v1/auth/me || echo 000)
+          echo "GET /api/v1/auth/me -> $code (401 = backend healthy & reachable)"
+          test "$code" = "401"
 
   deploy-frontend:
     name: Deploy frontend
@@ -32,7 +50,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
-      - run: flyctl deploy --remote-only
+      - name: Deploy frontend
         working-directory: frontend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        # Frontend is stateless, so flyctl can roll it cleanly; just give the wait
+        # the same headroom. Let a real failure here surface loudly.
+        run: flyctl deploy --remote-only --wait-timeout 300
+      - name: Smoke test
+        run: |
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
+            https://nervetrack.jameskeech.io/api/v1/auth/me || echo 000)
+          echo "GET /api/v1/auth/me -> $code (expect 401)"
+          test "$code" = "401"
