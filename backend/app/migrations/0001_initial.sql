@@ -1,27 +1,24 @@
--- Initial NerveTrack schema (Phase 1) with per-user account scoping.
--- All timestamps are stored in UTC; calendar dates are derived in the
--- configured local timezone by the application layer.
+-- Initial NerveTrack schema (Phase 1), SQLite dialect.
+-- Timestamps are stored as naive UTC ISO-8601 text; dates as ISO-8601 text.
+-- UUID columns store canonical dashed UUID text.
 
--- Accounts. Identity comes from Google OAuth; we key on the stable `sub`.
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     google_sub TEXT UNIQUE,
     email TEXT UNIQUE NOT NULL,
     name TEXT,
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now'))
 );
 
--- Opaque session tokens (stored as a sha256 hash; the raw token lives only in
--- the user's httpOnly cookie).
 CREATE TABLE auth_sessions (
     token_hash TEXT PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users (id),
-    created_at TIMESTAMP DEFAULT now(),
+    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
     expires_at TIMESTAMP NOT NULL
 );
 
 CREATE TABLE daily_entries (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     user_id UUID NOT NULL REFERENCES users (id),
     entry_date DATE NOT NULL,
     status TEXT CHECK (status IN ('G', 'A', 'R')),
@@ -37,13 +34,13 @@ CREATE TABLE daily_entries (
     sleep_quality DECIMAL(2, 1),
     iced BOOLEAN DEFAULT FALSE,
     notes TEXT,
-    created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
+    created_at TIMESTAMP DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
+    updated_at TIMESTAMP DEFAULT (strftime('%Y-%m-%dT%H:%M:%f','now')),
     UNIQUE (user_id, entry_date)
 );
 
 CREATE TABLE pain_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     daily_entry_id UUID NOT NULL REFERENCES daily_entries (id),
     occurred_at TIMESTAMP NOT NULL,
     pain_level DECIMAL(3, 1),
@@ -51,7 +48,7 @@ CREATE TABLE pain_events (
 );
 
 CREATE TABLE exercises (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     user_id UUID NOT NULL REFERENCES users (id),
     name TEXT NOT NULL,
     active BOOLEAN DEFAULT TRUE,
@@ -60,7 +57,7 @@ CREATE TABLE exercises (
 );
 
 CREATE TABLE strength_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     daily_entry_id UUID NOT NULL REFERENCES daily_entries (id),
     performed_at TIMESTAMP NOT NULL,
     intensity DECIMAL(3, 1),
@@ -68,7 +65,7 @@ CREATE TABLE strength_sessions (
 );
 
 CREATE TABLE exercise_logs (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     session_id UUID NOT NULL REFERENCES strength_sessions (id),
     exercise_id UUID NOT NULL REFERENCES exercises (id),
     sets INTEGER,
@@ -81,7 +78,7 @@ CREATE TABLE exercise_logs (
 );
 
 CREATE TABLE sit_stand_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     user_id UUID NOT NULL REFERENCES users (id),
     entry_date DATE NOT NULL,
     posture TEXT NOT NULL CHECK (posture IN ('sitting', 'standing', 'lying', 'walking')),
@@ -92,7 +89,7 @@ CREATE TABLE sit_stand_sessions (
 );
 
 CREATE TABLE weekly_summaries (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    id UUID PRIMARY KEY DEFAULT (lower(hex(randomblob(4))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(2))||'-'||hex(randomblob(6)))),
     user_id UUID NOT NULL REFERENCES users (id),
     week_start DATE NOT NULL,
     strengthening_sessions INTEGER,
