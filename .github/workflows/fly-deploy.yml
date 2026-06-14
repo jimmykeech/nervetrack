@@ -20,28 +20,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Strategy is "immediate" (see backend/fly.toml) because the single
+      # machine + attached volume can't be rolled; that avoids the health-check
+      # wait that used to time out. Brief downtime per deploy is expected.
       - name: Deploy backend
         working-directory: backend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        run: |
-          # The backend is a single machine with an attached volume, so flyctl
-          # updates it IN PLACE (stop → swap image → start) rather than rolling.
-          # During that brief restart its post-deploy health-check poll can fail
-          # with "net/http: request canceled" even though the machine comes up
-          # healthy. So: give flyctl a longer wait, and if it still reports
-          # failure, verify the app is actually serving and only fail the job on a
-          # genuine outage. A healthy backend answers /api/v1/auth/me with 401.
-          if flyctl deploy --remote-only --wait-timeout 300; then
-            exit 0
-          fi
-          echo "::warning::flyctl deploy reported failure — verifying app health directly"
-          flyctl status -a nervetrack-backend || true
-          flyctl checks list -a nervetrack-backend || true
-          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
-            https://nervetrack.jameskeech.io/api/v1/auth/me || echo 000)
-          echo "GET /api/v1/auth/me -> $code (401 = backend healthy & reachable)"
-          test "$code" = "401"
+        run: flyctl deploy --remote-only
 
   deploy-frontend:
     name: Deploy frontend
@@ -50,13 +36,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: superfly/flyctl-actions/setup-flyctl@master
+      # Frontend is stateless, so flyctl rolls it cleanly. Let a real failure surface.
       - name: Deploy frontend
         working-directory: frontend
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
-        # Frontend is stateless, so flyctl can roll it cleanly; just give the wait
-        # the same headroom. Let a real failure here surface loudly.
-        run: flyctl deploy --remote-only --wait-timeout 300
+        run: flyctl deploy --remote-only
+      # End-to-end check: a healthy, reachable backend answers 401 (not signed in)
+      # through the freshly deployed frontend proxy.
       - name: Smoke test
         run: |
           code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 \
