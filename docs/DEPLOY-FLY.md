@@ -188,6 +188,16 @@ fly dashboard   --app nervetrack-frontend     # open web dashboard
 single-writer. Two machines would mean two writers against one file = corruption.
 Keep `min_machines_running = 1` and never run `fly scale count 2` on the backend.
 
+### Why the backend deploys with `strategy = "immediate"`
+A single machine with an attached volume can't be rolled (the volume can't be on
+two machines at once), so the default `rolling` strategy updates in place and then
+sits in a health-check wait that intermittently times out with
+`net/http: request canceled` — failing the deploy in CI and the Fly dashboard even
+though the app comes up healthy. `backend/fly.toml` sets `[deploy] strategy =
+"immediate"`, which replaces the machine all at once (a few seconds of downtime)
+for a clean, reliable release. The frontend has no volume and keeps the default
+rolling strategy.
+
 ---
 
 ## Troubleshooting

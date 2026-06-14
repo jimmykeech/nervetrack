@@ -11,6 +11,15 @@
 app = "nervetrack-backend"
 primary_region = "syd"
 
+# One machine + an attached volume can't be rolled (the volume can't live on two
+# machines at once), so the default "rolling" strategy updates in place and then
+# hangs in a health-check wait that intermittently times out ("request canceled").
+# "immediate" stops and replaces the single machine all at once with no health
+# gate — a few seconds of downtime per deploy in exchange for a clean, reliable
+# release in both CI and the Fly dashboard.
+[deploy]
+  strategy = "immediate"
+
 [build]
   dockerfile = "Dockerfile"
 
