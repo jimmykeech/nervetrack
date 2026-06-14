@@ -51,6 +51,27 @@ def test_allowed_email_logs_in(client, oauth_env, monkeypatch):
     assert me.json()["email"] == "allowed@example.com"
 
 
+def test_returning_user_logs_in_again(client, oauth_env, monkeypatch):
+    """A second login of the same account must not 500.
+
+    Regression: the first login INSERTs the user and seeds FK-referencing rows
+    (exercises, settings). On the next login upsert_user took an UPDATE branch,
+    which DuckDB rejects because the users row is now referenced by a foreign key
+    in another table — surfacing as a 500 on the OAuth callback.
+    """
+    _mock_google(monkeypatch, "allowed@example.com", sub="sub-repeat")
+
+    client.cookies.set(OAUTH_STATE_COOKIE, "state-1")
+    first = client.get(CALLBACK, params={"code": "c", "state": "state-1"}, follow_redirects=False)
+    assert first.status_code == 302
+
+    client.cookies.set(OAUTH_STATE_COOKIE, "state-2")
+    second = client.get(CALLBACK, params={"code": "c", "state": "state-2"}, follow_redirects=False)
+    assert second.status_code == 302
+    assert second.headers["location"].endswith("/")  # back to the app, not an error
+    assert client.get("/api/v1/auth/me").json()["email"] == "allowed@example.com"
+
+
 def test_non_invited_email_rejected(client, oauth_env, monkeypatch):
     _mock_google(monkeypatch, "stranger@example.com")
     client.cookies.set(OAUTH_STATE_COOKIE, "state123")
