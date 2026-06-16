@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
+  combineDateTimeToISO,
+  defaultJabTime,
   formatDuration,
   formatMinutesish,
   intervalSeconds,
   liveTotals,
   parseDurationToMinutes,
   shiftISODate,
-  sitStandRatio
+  sitStandRatio,
+  todayISO
 } from './time';
 import type { Interval } from './types';
 
@@ -92,5 +95,29 @@ describe('shiftISODate', () => {
   it('shifts dates across month boundaries', () => {
     expect(shiftISODate('2026-06-13', -1)).toBe('2026-06-12');
     expect(shiftISODate('2026-06-30', 1)).toBe('2026-07-01');
+  });
+});
+
+describe('combineDateTimeToISO', () => {
+  it('combines a local date and HH:MM into a UTC ISO string', () => {
+    const iso = combineDateTimeToISO('2026-06-13', '14:30');
+    const back = new Date(iso);
+    expect(back.getFullYear()).toBe(2026);
+    expect(back.getMonth()).toBe(5); // June (0-based)
+    expect(back.getDate()).toBe(13);
+    expect(back.getHours()).toBe(14);
+    expect(back.getMinutes()).toBe(30);
+    expect(iso.endsWith('Z')).toBe(true);
+  });
+});
+
+describe('defaultJabTime', () => {
+  it('returns 12:00 for a past day', () => {
+    expect(defaultJabTime('2000-01-01')).toBe('12:00');
+  });
+
+  it('returns the current local HH:MM for today', () => {
+    const now = new Date(2026, 5, 13, 9, 5); // 09:05 local
+    expect(defaultJabTime(todayISO(), now)).toBe('09:05');
   });
 });

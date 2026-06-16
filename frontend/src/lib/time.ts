@@ -105,3 +105,21 @@ export function formatMinutesLabel(minutes: number | null): string {
   if (h > 0) return `${h}h`;
   return `${m}m`;
 }
+
+/** Combine a local YYYY-MM-DD date and HH:MM time into a UTC ISO string. */
+export function combineDateTimeToISO(dateISO: string, hhmm: string): string {
+  const [y, m, d] = dateISO.split('-').map(Number);
+  const [hh, mm] = hhmm.split(':').map(Number);
+  return new Date(y, m - 1, d, hh, mm, 0, 0).toISOString();
+}
+
+/**
+ * Default time for the jab picker on a given day: the current local time when
+ * `dateISO` is today, otherwise noon (there is no "now" within a past day).
+ */
+export function defaultJabTime(dateISO: string, now: Date = new Date()): string {
+  if (dateISO !== todayISO()) return '12:00';
+  const hh = now.getHours().toString().padStart(2, '0');
+  const mm = now.getMinutes().toString().padStart(2, '0');
+  return `${hh}:${mm}`;
+}
