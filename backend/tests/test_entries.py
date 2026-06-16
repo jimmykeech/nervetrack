@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.models.entries import DailyEntryUpsert
@@ -35,6 +35,15 @@ def test_pain_event_updates_summary(db, user_id):
     assert entry.sharp_pain_episodes == 2
     assert entry.worst_pain == Decimal("5")
     assert len(entry.pain_events) == 2
+
+
+def test_pain_event_normalizes_aware_timestamp_to_naive_utc(db, user_id):
+    d = date(2026, 6, 13)
+    # 22:30 at UTC+10 == 12:30 UTC. Stored value must be naive UTC.
+    aware = datetime(2026, 6, 13, 22, 30, tzinfo=timezone(timedelta(hours=10)))
+    ev = service.add_pain_event(db, user_id, d, aware, 4, None)
+    assert ev.occurred_at == datetime(2026, 6, 13, 12, 30)
+    assert ev.occurred_at.tzinfo is None
 
 
 def test_delete_pain_event_recomputes(db, user_id):

@@ -16,7 +16,7 @@ from app.models.entries import (
 )
 from app.services import sessions as sessions_service
 from app.services import timer as timer_service
-from app.services.timeutil import now_utc
+from app.services.timeutil import now_utc, to_utc_naive
 
 # Columns the upsert path may write.
 _UPSERT_COLUMNS = (
@@ -124,7 +124,7 @@ def add_pain_event(
 ) -> PainEvent:
     with db.cursor():
         entry_id = ensure_entry(db, user_id, entry_date)
-        occurred = occurred_at or now_utc()
+        occurred = to_utc_naive(occurred_at) if occurred_at else now_utc()
         created = db.query_one(
             """
             INSERT INTO pain_events (daily_entry_id, occurred_at, pain_level, context)
