@@ -4,7 +4,14 @@
   import StatusToggle from '$lib/components/StatusToggle.svelte';
   import Stepper from '$lib/components/Stepper.svelte';
   import RatioBar from '$lib/components/RatioBar.svelte';
-  import { formatMinutesLabel, parseDurationToMinutes, shiftISODate, todayISO } from '$lib/time';
+  import {
+    combineDateTimeToISO,
+    defaultJabTime,
+    formatMinutesLabel,
+    parseDurationToMinutes,
+    shiftISODate,
+    todayISO
+  } from '$lib/time';
   import type { DailyEntry, Status } from '$lib/types';
 
   let date = $state($page.url.searchParams.get('date') ?? todayISO());
@@ -29,6 +36,9 @@
   let showJab = $state(false);
   let jabLevel = $state<number | null>(3);
   let jabContext = $state('');
+  let jabTimeOpen = $state(false);
+  let jabTime = $state('');
+  const jabDefaultTime = $derived(defaultJabTime(date));
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let loadedKey = $state('');
@@ -82,11 +92,18 @@
   }
 
   async function logJab() {
+    // Today + untouched picker → let the server stamp now() (full precision).
+    // Past day, or an edited time → send the chosen wall-clock time.
+    const sendTime = jabTimeOpen || date !== todayISO();
+    const hhmm = jabTime || jabDefaultTime;
     await api.addPainEvent(date, {
       pain_level: jabLevel ?? undefined,
-      context: jabContext || undefined
+      context: jabContext || undefined,
+      occurred_at: sendTime ? combineDateTimeToISO(date, hhmm) : undefined
     });
     jabContext = '';
+    jabTimeOpen = false;
+    jabTime = '';
     showJab = false;
     await load(date);
   }
@@ -215,6 +232,22 @@
       </div>
       <button class="status-G" style="align-self: flex-end" onclick={logJab}>Log</button>
     </div>
+    <div class="jab-time">
+      {#if jabTimeOpen}
+        <label for="jab-time-input">Time</label>
+        <input id="jab-time-input" type="time" bind:value={jabTime} />
+      {:else}
+        <button
+          class="link"
+          onclick={() => {
+            jabTime = jabDefaultTime;
+            jabTimeOpen = true;
+          }}
+        >
+          logged {jabDefaultTime} · change time
+        </button>
+      {/if}
+    </div>
   {/if}
   {#if entry?.pain_events?.length}
     <ul class="events">
@@ -298,6 +331,15 @@
     gap: 0.75rem;
     flex-wrap: wrap;
     margin-top: 0.75rem;
+  }
+  .jab-time {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+  }
+  .jab-time label {
+    margin: 0;
   }
   .events {
     list-style: none;
