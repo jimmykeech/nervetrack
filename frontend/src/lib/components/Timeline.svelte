@@ -89,7 +89,9 @@
                   <input type="time" bind:value={editTime} />
                   <span>
                     <button class="link" onclick={() => (editingId = null)}>cancel</button>
-                    <button class="link" onclick={() => saveEdit(ev.id)}>save</button>
+                    <button class="link" onclick={() => saveEdit(ev.id)} disabled={!editBody.trim()}
+                      >save</button
+                    >
                   </span>
                 </div>
               {:else}
