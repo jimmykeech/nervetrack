@@ -36,7 +36,7 @@ describe('buildTimeline', () => {
     expect(buildTimeline(entry({}))).toEqual([]);
   });
 
-  it('merges and sorts all sources ascending by time', () => {
+  it('merges and sorts all sources newest first (descending) by time', () => {
     const events = buildTimeline(
       entry({
         stretches_morning_at: '2026-06-13T07:45:00',
@@ -74,13 +74,13 @@ describe('buildTimeline', () => {
         ]
       })
     );
-    expect(events.map((e) => e.kind)).toEqual(['check', 'timer', 'pain', 'note', 'check']);
+    expect(events.map((e) => e.kind)).toEqual(['check', 'note', 'pain', 'timer', 'check']);
     expect(events.map((e) => e.at)).toEqual([
-      '2026-06-13T07:45:00',
-      '2026-06-13T09:02:00',
-      '2026-06-13T11:15:00',
+      '2026-06-13T20:00:00',
       '2026-06-13T14:20:00',
-      '2026-06-13T20:00:00'
+      '2026-06-13T11:15:00',
+      '2026-06-13T09:02:00',
+      '2026-06-13T07:45:00'
     ]);
   });
 

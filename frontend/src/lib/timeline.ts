@@ -1,6 +1,7 @@
-// Flattens a DailyEntry's four event sources into a single chronological list.
-// Pure and dependency-free so it is unit-testable. Timestamps are naive UTC
-// ISO strings of uniform format, so lexical comparison orders them correctly.
+// Flattens a DailyEntry's four event sources into a single chronological list,
+// newest first (descending by time). Pure and dependency-free so it is
+// unit-testable. Timestamps are naive UTC ISO strings of uniform format, so
+// lexical comparison orders them correctly.
 
 import type { DailyEntry, Posture } from './types';
 
@@ -49,5 +50,5 @@ export function buildTimeline(entry: DailyEntry): TimelineEvent[] {
     events.push({ kind: 'note', at: n.occurred_at, id: n.id, body: n.body });
   }
 
-  return events.sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+  return events.sort((a, b) => (a.at > b.at ? -1 : a.at < b.at ? 1 : 0));
 }
