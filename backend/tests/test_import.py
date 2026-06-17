@@ -133,3 +133,30 @@ def test_import_is_idempotent(db, user_id):
         "WHERE d.entry_date = '2026-06-12'"
     )["n"]
     assert n_logs == 3
+
+
+def test_import_writes_notes(db, user_id):
+    """Notes column is stored in the notes table; re-import is idempotent."""
+    content = _build_workbook()
+
+    # First import: a notes row should be created for each row that has note text.
+    service.import_workbook(db, user_id, content)
+    note_row = db.query_one(
+        "SELECT n.body, n.source "
+        "FROM notes n "
+        "JOIN daily_entries d ON d.id = n.daily_entry_id "
+        "WHERE d.entry_date = '2026-06-12' AND n.source = 'import'"
+    )
+    assert note_row is not None
+    assert note_row["source"] == "import"
+    assert "Felt ok" in note_row["body"]
+
+    # Re-import: still exactly ONE import-sourced note for that day.
+    service.import_workbook(db, user_id, content)
+    count = db.query_one(
+        "SELECT COUNT(*) AS n "
+        "FROM notes n "
+        "JOIN daily_entries d ON d.id = n.daily_entry_id "
+        "WHERE d.entry_date = '2026-06-12' AND n.source = 'import'"
+    )["n"]
+    assert count == 1

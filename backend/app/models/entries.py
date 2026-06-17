@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.postures import PostureTotals  # noqa: F401 (re-exported)
+
 
 class PainEventIn(BaseModel):
     occurred_at: datetime | None = None
@@ -38,13 +40,6 @@ class DailyEntryUpsert(BaseModel):
     sitting_breaks: str | None = None
     sleep_quality: Decimal | None = Field(default=None, ge=1, le=5)
     iced: bool | None = None
-
-
-class PostureTotals(BaseModel):
-    sitting: int = 0
-    standing: int = 0
-    lying: int = 0
-    walking: int = 0
 
 
 class DailyEntrySummary(BaseModel):

@@ -72,7 +72,7 @@ def day(db: Database, user_id: UUID, entry_date: date) -> DayTimer:
     intervals = [Interval(**r) for r in rows]
     totals = posture_totals(db, user_id, entry_date)
     running = next((i for i in intervals if i.ended_at is None), None)
-    from app.models.entries import PostureTotals
+    from app.models.postures import PostureTotals
 
     return DayTimer(
         entry_date=entry_date,
