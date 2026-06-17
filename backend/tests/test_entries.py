@@ -134,3 +134,25 @@ def test_api_note_crud(auth_client):
 
     blank = auth_client.post("/api/v1/entries/2026-06-13/notes", json={"body": ""})
     assert blank.status_code == 422
+
+
+def test_checkbox_tick_stamps_time(db, user_id):
+    d = date(2026, 6, 13)
+    entry = service.upsert_entry(db, user_id, d, DailyEntryUpsert(iced=True))
+    assert entry.iced_at is not None
+    assert entry.iced_at.tzinfo is None
+
+
+def test_checkbox_untick_clears_time(db, user_id):
+    d = date(2026, 6, 13)
+    service.upsert_entry(db, user_id, d, DailyEntryUpsert(strengthening_done=True))
+    entry = service.upsert_entry(db, user_id, d, DailyEntryUpsert(strengthening_done=False))
+    assert entry.strengthening_done_at is None
+
+
+def test_checkbox_restamp_not_overwritten_when_unchanged(db, user_id):
+    d = date(2026, 6, 13)
+    first = service.upsert_entry(db, user_id, d, DailyEntryUpsert(iced=True))
+    # An unrelated field changes; iced stays true and its stamp is preserved.
+    second = service.upsert_entry(db, user_id, d, DailyEntryUpsert(iced=True, status="A"))
+    assert second.iced_at == first.iced_at

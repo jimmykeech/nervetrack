@@ -36,6 +36,14 @@ _UPSERT_COLUMNS = (
     "iced",
 )
 
+# Checkbox column -> its completion-timestamp column.
+_CHECKBOX_AT = {
+    "strengthening_done": "strengthening_done_at",
+    "stretches_morning": "stretches_morning_at",
+    "stretches_night": "stretches_night_at",
+    "iced": "iced_at",
+}
+
 
 def ensure_entry(db: Database, user_id: UUID, entry_date: date) -> UUID:
     """Return the id of the user's entry for ``entry_date``, creating one if needed."""
@@ -59,14 +67,29 @@ def upsert_entry(
     fields = data.model_dump(exclude_unset=True)
     with db.cursor():
         entry_id = ensure_entry(db, user_id, entry_date)
-        if fields:
-            assignments = ", ".join(f"{col} = ?" for col in fields if col in _UPSERT_COLUMNS)
-            params: list[Any] = [fields[col] for col in fields if col in _UPSERT_COLUMNS]
-            if assignments:
-                db.execute(
-                    f"UPDATE daily_entries SET {assignments}, updated_at = ? WHERE id = ?",
-                    [*params, now_utc(), entry_id],
-                )
+        existing = db.query_one("SELECT * FROM daily_entries WHERE id = ?", [entry_id])
+        assert existing is not None
+        now = now_utc()
+        assignments: list[str] = []
+        params: list[Any] = []
+        for col in fields:
+            if col in _UPSERT_COLUMNS:
+                assignments.append(f"{col} = ?")
+                params.append(fields[col])
+        for col, at_col in _CHECKBOX_AT.items():
+            if col in fields:
+                if fields[col] and not existing[col]:
+                    assignments.append(f"{at_col} = ?")
+                    params.append(now)
+                elif not fields[col]:
+                    assignments.append(f"{at_col} = ?")
+                    params.append(None)
+        if assignments:
+            db.execute(
+                f"UPDATE daily_entries SET {', '.join(assignments)}, updated_at = ? "
+                "WHERE id = ?",
+                [*params, now, entry_id],
+            )
     detail = get_entry(db, user_id, entry_date)
     assert detail is not None
     return detail
