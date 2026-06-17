@@ -16,6 +16,7 @@ from app.models.entries import (
     PainEvent,
     PainEventIn,
 )
+from app.models.notes import Note, NoteIn, NoteUpdate
 from app.services import entries as service
 
 router = APIRouter(tags=["entries"])
@@ -67,3 +68,34 @@ def delete_pain_event(
 ):
     if not service.delete_pain_event(db, user_id, event_id):
         raise HTTPException(404, "No such pain event")
+
+
+@router.post("/entries/{entry_date}/notes", response_model=Note, status_code=201)
+def add_note(
+    entry_date: date,
+    data: NoteIn,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    return service.add_note(db, user_id, entry_date, data.occurred_at, data.body)
+
+
+@router.patch("/notes/{note_id}", response_model=Note)
+def update_note(
+    note_id: UUID,
+    data: NoteUpdate,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    note = service.update_note(db, user_id, note_id, data.body, data.occurred_at)
+    if note is None:
+        raise HTTPException(404, "No such note")
+    return note
+
+
+@router.delete("/notes/{note_id}", status_code=204)
+def delete_note(
+    note_id: UUID, db=Depends(db_dep), user_id: UUID = Depends(current_user)
+):
+    if not service.delete_note(db, user_id, note_id):
+        raise HTTPException(404, "No such note")

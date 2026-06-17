@@ -187,3 +187,63 @@ def _recompute_pain_summary(db: Database, entry_id: UUID) -> None:
         "WHERE id = ?",
         [agg["n"], agg["worst"], now_utc(), entry_id],
     )
+
+
+def add_note(db: Database, user_id: UUID, entry_date: date, occurred_at, body: str) -> Note:
+    with db.cursor():
+        entry_id = ensure_entry(db, user_id, entry_date)
+        occurred = to_utc_naive(occurred_at) if occurred_at else now_utc()
+        created = db.query_one(
+            "INSERT INTO notes (daily_entry_id, occurred_at, body) "
+            "VALUES (?, ?, ?) RETURNING *",
+            [entry_id, occurred, body],
+        )
+    assert created is not None
+    return Note(**created)
+
+
+def update_note(
+    db: Database, user_id: UUID, note_id: UUID, body, occurred_at
+) -> Note | None:
+    owned = db.query_one(
+        """
+        SELECT n.id
+        FROM notes n
+        JOIN daily_entries d ON d.id = n.daily_entry_id
+        WHERE n.id = ? AND d.user_id = ?
+        """,
+        [note_id, user_id],
+    )
+    if not owned:
+        return None
+    sets: list[str] = []
+    params: list[Any] = []
+    if body is not None:
+        sets.append("body = ?")
+        params.append(body)
+    if occurred_at is not None:
+        sets.append("occurred_at = ?")
+        params.append(to_utc_naive(occurred_at))
+    sets.append("updated_at = ?")
+    params.append(now_utc())
+    updated = db.query_one(
+        f"UPDATE notes SET {', '.join(sets)} WHERE id = ? RETURNING *",
+        [*params, note_id],
+    )
+    return Note(**updated) if updated else None
+
+
+def delete_note(db: Database, user_id: UUID, note_id: UUID) -> bool:
+    owned = db.query_one(
+        """
+        SELECT n.id
+        FROM notes n
+        JOIN daily_entries d ON d.id = n.daily_entry_id
+        WHERE n.id = ? AND d.user_id = ?
+        """,
+        [note_id, user_id],
+    )
+    if not owned:
+        return False
+    db.execute("DELETE FROM notes WHERE id = ?", [note_id])
+    return True
