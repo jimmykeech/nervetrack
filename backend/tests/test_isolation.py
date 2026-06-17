@@ -13,10 +13,10 @@ from app.services import weekly as weekly_service
 def test_entries_are_per_user(db, user_id, make_user):
     other = make_user()
     d = date(2026, 6, 13)
-    entries_service.upsert_entry(db, user_id, d, DailyEntryUpsert(status="R", notes="mine"))
+    entries_service.upsert_entry(db, user_id, d, DailyEntryUpsert(status="R"))
 
     # Owner sees it; the other user does not.
-    assert entries_service.get_entry(db, user_id, d).notes == "mine"
+    assert entries_service.get_entry(db, user_id, d).status == "R"
     assert entries_service.get_entry(db, other, d) is None
     assert len(entries_service.list_entries(db, user_id, None, None)) == 1
     assert len(entries_service.list_entries(db, other, None, None)) == 0

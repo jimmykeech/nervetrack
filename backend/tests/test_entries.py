@@ -11,15 +11,15 @@ from app.services import entries as service
 
 def test_upsert_creates_then_updates(db, user_id):
     d = date(2026, 6, 13)
-    first = service.upsert_entry(db, user_id, d, DailyEntryUpsert(status="G", notes="ok"))
+    first = service.upsert_entry(db, user_id, d, DailyEntryUpsert(status="G", iced=True))
     assert first.status == "G"
-    assert first.notes == "ok"
+    assert first.iced is True
 
     # A partial update leaves unspecified fields untouched.
     second = service.upsert_entry(db, user_id, d, DailyEntryUpsert(tingling_level=3))
     assert second.status == "G"
     assert second.tingling_level == Decimal("3")
-    assert second.notes == "ok"
+    assert second.iced is True
 
     rows = db.query("SELECT * FROM daily_entries WHERE entry_date = ?", [d])
     assert len(rows) == 1

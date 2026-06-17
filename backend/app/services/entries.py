@@ -11,9 +11,11 @@ from app.models.entries import (
     DailyEntry,
     DailyEntrySummary,
     DailyEntryUpsert,
+    Note,
     PainEvent,
     PostureTotals,
 )
+from app.models.timer import Interval
 from app.services import sessions as sessions_service
 from app.services import timer as timer_service
 from app.services.timeutil import now_utc, to_utc_naive
@@ -32,7 +34,6 @@ _UPSERT_COLUMNS = (
     "sitting_breaks",
     "sleep_quality",
     "iced",
-    "notes",
 )
 
 
@@ -109,13 +110,30 @@ def get_entry(db: Database, user_id: UUID, entry_date: date) -> DailyEntry | Non
             [row["id"]],
         )
     ]
+    notes = [
+        Note(**n)
+        for n in db.query(
+            "SELECT * FROM notes WHERE daily_entry_id = ? ORDER BY occurred_at",
+            [row["id"]],
+        )
+    ]
+    intervals = [
+        Interval(**i)
+        for i in db.query(
+            "SELECT * FROM sit_stand_sessions WHERE user_id = ? AND entry_date = ? "
+            "ORDER BY started_at",
+            [user_id, entry_date],
+        )
+    ]
     session = sessions_service.get_session_for_entry(db, row["id"])
     totals = timer_service.posture_totals(db, user_id, entry_date)
     return DailyEntry(
         **row,
         pain_events=events,
+        notes=notes,
         session=session,
         timer_totals=PostureTotals(**totals),
+        timer_intervals=intervals,
     )
 
 
