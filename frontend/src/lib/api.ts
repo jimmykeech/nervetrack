@@ -8,6 +8,7 @@ import type {
   DayTimer,
   Exercise,
   Interval,
+  Note,
   Posture,
   SessionDetail,
   WeeklySummary
@@ -73,6 +74,11 @@ export const api = {
     data: { pain_level?: number; context?: string; occurred_at?: string }
   ) => request(`/entries/${date}/pain-events`, { method: 'POST', body: JSON.stringify(data) }),
   deletePainEvent: (id: string) => request(`/pain-events/${id}`, { method: 'DELETE' }),
+  addNote: (date: string, data: { body: string; occurred_at?: string }) =>
+    request<Note>(`/entries/${date}/notes`, { method: 'POST', body: JSON.stringify(data) }),
+  updateNote: (id: string, data: { body?: string; occurred_at?: string }) =>
+    request<Note>(`/notes/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteNote: (id: string) => request(`/notes/${id}`, { method: 'DELETE' }),
 
   // Exercises & sessions
   listExercises: () => request<Exercise[]>('/exercises'),
