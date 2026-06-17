@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.models.postures import PostureTotals  # noqa: F401 (re-exported)
+
 
 class PainEventIn(BaseModel):
     occurred_at: datetime | None = None
@@ -38,14 +40,6 @@ class DailyEntryUpsert(BaseModel):
     sitting_breaks: str | None = None
     sleep_quality: Decimal | None = Field(default=None, ge=1, le=5)
     iced: bool | None = None
-    notes: str | None = None
-
-
-class PostureTotals(BaseModel):
-    sitting: int = 0
-    standing: int = 0
-    lying: int = 0
-    walking: int = 0
 
 
 class DailyEntrySummary(BaseModel):
@@ -75,14 +69,21 @@ class DailyEntry(BaseModel):
     sitting_breaks: str | None = None
     sleep_quality: Decimal | None = None
     iced: bool = False
-    notes: str | None = None
+    strengthening_done_at: datetime | None = None
+    stretches_morning_at: datetime | None = None
+    stretches_night_at: datetime | None = None
+    iced_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     pain_events: list[PainEvent] = Field(default_factory=list)
+    notes: list[Note] = Field(default_factory=list)
     session: SessionDetail | None = None
     timer_totals: PostureTotals = Field(default_factory=PostureTotals)
+    timer_intervals: list[Interval] = Field(default_factory=list)
 
 
+from app.models.notes import Note  # noqa: E402
 from app.models.sessions import SessionDetail  # noqa: E402
+from app.models.timer import Interval  # noqa: E402
 
 DailyEntry.model_rebuild()

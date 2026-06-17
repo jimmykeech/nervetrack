@@ -16,6 +16,16 @@ export interface PainEvent {
   context: string | null;
 }
 
+export interface Note {
+  id: string;
+  daily_entry_id: string;
+  occurred_at: string;
+  body: string;
+  source: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 export interface ExerciseLog {
   id?: string;
   exercise_id: string;
@@ -53,10 +63,15 @@ export interface DailyEntry {
   sitting_breaks: string | null;
   sleep_quality: number | null;
   iced: boolean;
-  notes: string | null;
+  strengthening_done_at: string | null;
+  stretches_morning_at: string | null;
+  stretches_night_at: string | null;
+  iced_at: string | null;
   pain_events: PainEvent[];
+  notes: Note[];
   session: SessionDetail | null;
   timer_totals: PostureTotals;
+  timer_intervals: Interval[];
 }
 
 export interface DailyEntrySummary {

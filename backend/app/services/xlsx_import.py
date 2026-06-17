@@ -156,8 +156,8 @@ def _import_daily(db: Database, user_id: UUID, ws) -> int:
                     (user_id, entry_date, status, strengthening_done, session_intensity,
                      sharp_pain_episodes, worst_pain, tingling_level,
                      tingling_duration_minutes, stretches_morning, stretches_night,
-                     sitting_breaks, sleep_quality, notes, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     sitting_breaks, sleep_quality, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT (user_id, entry_date) DO UPDATE SET
                     status = excluded.status,
                     strengthening_done = excluded.strengthening_done,
@@ -170,7 +170,6 @@ def _import_daily(db: Database, user_id: UUID, ws) -> int:
                     stretches_night = excluded.stretches_night,
                     sitting_breaks = excluded.sitting_breaks,
                     sleep_quality = excluded.sleep_quality,
-                    notes = excluded.notes,
                     updated_at = excluded.updated_at
                 """,
                 [
@@ -187,10 +186,24 @@ def _import_daily(db: Database, user_id: UUID, ws) -> int:
                     stretches,
                     _clean(_get(row, headers, "sitting breaks", "breaks")) or None,
                     parse_decimal(_get(row, headers, "sleep")),
-                    notes,
                     now_utc(),
                 ],
             )
+        if notes:
+            entry_row = db.query_one(
+                "SELECT id FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+                [user_id, d],
+            )
+            with db.cursor():
+                db.execute(
+                    "DELETE FROM notes WHERE daily_entry_id = ? AND source = 'import'",
+                    [entry_row["id"]],
+                )
+                db.execute(
+                    "INSERT INTO notes (daily_entry_id, occurred_at, body, source) "
+                    "VALUES (?, ?, ?, 'import')",
+                    [entry_row["id"], datetime(d.year, d.month, d.day, 12, 0), notes],
+                )
         count += 1
     return count
 

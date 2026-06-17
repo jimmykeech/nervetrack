@@ -11,9 +11,11 @@ from app.models.entries import (
     DailyEntry,
     DailyEntrySummary,
     DailyEntryUpsert,
+    Note,
     PainEvent,
     PostureTotals,
 )
+from app.models.timer import Interval
 from app.services import sessions as sessions_service
 from app.services import timer as timer_service
 from app.services.timeutil import now_utc, to_utc_naive
@@ -32,8 +34,15 @@ _UPSERT_COLUMNS = (
     "sitting_breaks",
     "sleep_quality",
     "iced",
-    "notes",
 )
+
+# Checkbox column -> its completion-timestamp column.
+_CHECKBOX_AT = {
+    "strengthening_done": "strengthening_done_at",
+    "stretches_morning": "stretches_morning_at",
+    "stretches_night": "stretches_night_at",
+    "iced": "iced_at",
+}
 
 
 def ensure_entry(db: Database, user_id: UUID, entry_date: date) -> UUID:
@@ -58,14 +67,29 @@ def upsert_entry(
     fields = data.model_dump(exclude_unset=True)
     with db.cursor():
         entry_id = ensure_entry(db, user_id, entry_date)
-        if fields:
-            assignments = ", ".join(f"{col} = ?" for col in fields if col in _UPSERT_COLUMNS)
-            params: list[Any] = [fields[col] for col in fields if col in _UPSERT_COLUMNS]
-            if assignments:
-                db.execute(
-                    f"UPDATE daily_entries SET {assignments}, updated_at = ? WHERE id = ?",
-                    [*params, now_utc(), entry_id],
-                )
+        existing = db.query_one("SELECT * FROM daily_entries WHERE id = ?", [entry_id])
+        assert existing is not None
+        now = now_utc()
+        assignments: list[str] = []
+        params: list[Any] = []
+        for col in fields:
+            if col in _UPSERT_COLUMNS:
+                assignments.append(f"{col} = ?")
+                params.append(fields[col])
+        for col, at_col in _CHECKBOX_AT.items():
+            if col in fields:
+                if fields[col] and not existing[col]:
+                    assignments.append(f"{at_col} = ?")
+                    params.append(now)
+                elif not fields[col]:
+                    assignments.append(f"{at_col} = ?")
+                    params.append(None)
+        if assignments:
+            db.execute(
+                f"UPDATE daily_entries SET {', '.join(assignments)}, updated_at = ? "
+                "WHERE id = ?",
+                [*params, now, entry_id],
+            )
     detail = get_entry(db, user_id, entry_date)
     assert detail is not None
     return detail
@@ -109,13 +133,30 @@ def get_entry(db: Database, user_id: UUID, entry_date: date) -> DailyEntry | Non
             [row["id"]],
         )
     ]
+    notes = [
+        Note(**n)
+        for n in db.query(
+            "SELECT * FROM notes WHERE daily_entry_id = ? ORDER BY occurred_at",
+            [row["id"]],
+        )
+    ]
+    intervals = [
+        Interval(**i)
+        for i in db.query(
+            "SELECT * FROM sit_stand_sessions WHERE user_id = ? AND entry_date = ? "
+            "ORDER BY started_at",
+            [user_id, entry_date],
+        )
+    ]
     session = sessions_service.get_session_for_entry(db, row["id"])
     totals = timer_service.posture_totals(db, user_id, entry_date)
     return DailyEntry(
         **row,
         pain_events=events,
+        notes=notes,
         session=session,
         timer_totals=PostureTotals(**totals),
+        timer_intervals=intervals,
     )
 
 
@@ -169,3 +210,63 @@ def _recompute_pain_summary(db: Database, entry_id: UUID) -> None:
         "WHERE id = ?",
         [agg["n"], agg["worst"], now_utc(), entry_id],
     )
+
+
+def add_note(db: Database, user_id: UUID, entry_date: date, occurred_at, body: str) -> Note:
+    with db.cursor():
+        entry_id = ensure_entry(db, user_id, entry_date)
+        occurred = to_utc_naive(occurred_at) if occurred_at else now_utc()
+        created = db.query_one(
+            "INSERT INTO notes (daily_entry_id, occurred_at, body) "
+            "VALUES (?, ?, ?) RETURNING *",
+            [entry_id, occurred, body],
+        )
+    assert created is not None
+    return Note(**created)
+
+
+def update_note(
+    db: Database, user_id: UUID, note_id: UUID, body, occurred_at
+) -> Note | None:
+    owned = db.query_one(
+        """
+        SELECT n.id
+        FROM notes n
+        JOIN daily_entries d ON d.id = n.daily_entry_id
+        WHERE n.id = ? AND d.user_id = ?
+        """,
+        [note_id, user_id],
+    )
+    if not owned:
+        return None
+    sets: list[str] = []
+    params: list[Any] = []
+    if body is not None:
+        sets.append("body = ?")
+        params.append(body)
+    if occurred_at is not None:
+        sets.append("occurred_at = ?")
+        params.append(to_utc_naive(occurred_at))
+    sets.append("updated_at = ?")
+    params.append(now_utc())
+    updated = db.query_one(
+        f"UPDATE notes SET {', '.join(sets)} WHERE id = ? RETURNING *",
+        [*params, note_id],
+    )
+    return Note(**updated) if updated else None
+
+
+def delete_note(db: Database, user_id: UUID, note_id: UUID) -> bool:
+    owned = db.query_one(
+        """
+        SELECT n.id
+        FROM notes n
+        JOIN daily_entries d ON d.id = n.daily_entry_id
+        WHERE n.id = ? AND d.user_id = ?
+        """,
+        [note_id, user_id],
+    )
+    if not owned:
+        return False
+    db.execute("DELETE FROM notes WHERE id = ?", [note_id])
+    return True

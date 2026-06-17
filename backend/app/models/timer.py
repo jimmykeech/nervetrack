@@ -7,7 +7,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.entries import PostureTotals
+from app.models.postures import PostureTotals
 
 POSTURES = ("sitting", "standing", "lying", "walking")
 

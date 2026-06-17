@@ -13,6 +13,8 @@
     todayISO
   } from '$lib/time';
   import type { DailyEntry, Status } from '$lib/types';
+  import NoteComposer from '$lib/components/NoteComposer.svelte';
+  import Timeline from '$lib/components/Timeline.svelte';
 
   let date = $state($page.url.searchParams.get('date') ?? todayISO());
   let entry = $state<DailyEntry | null>(null);
@@ -30,7 +32,6 @@
   let iced = $state(false);
   let sleep_quality = $state<number | null>(null);
   let sitting_breaks = $state('');
-  let notes = $state('');
 
   // Pain jab mini-form.
   let showJab = $state(false);
@@ -56,7 +57,6 @@
     iced = entry?.iced ?? false;
     sleep_quality = entry?.sleep_quality ?? null;
     sitting_breaks = entry?.sitting_breaks ?? '';
-    notes = entry?.notes ?? '';
     loadedKey = d;
     saveState = 'idle';
   }
@@ -84,8 +84,7 @@
       stretches_night,
       iced,
       sleep_quality,
-      sitting_breaks: sitting_breaks || null,
-      notes: notes || null
+      sitting_breaks: sitting_breaks || null
     };
     entry = await api.upsertEntry(date, payload as Partial<DailyEntry>);
     saveState = 'saved';
@@ -270,20 +269,16 @@
   <input bind:value={sitting_breaks} placeholder="e.g. Yes - many, A few" oninput={scheduleSave} />
 </div>
 
-<div class="card">
-  <label>Notes</label>
-  <textarea
-    bind:value={notes}
-    oninput={scheduleSave}
-    placeholder="Pain events, activities, what helped…"
-    rows="8"
-  ></textarea>
-</div>
+<NoteComposer {date} onAdded={() => load(date)} />
 
 <div class="card totals">
   <RatioBar {totals} />
   <a href="/timer" class="small">Open timer →</a>
 </div>
+
+{#if entry}
+  <Timeline {entry} {date} onChanged={() => load(date)} />
+{/if}
 
 <style>
   .datebar {
