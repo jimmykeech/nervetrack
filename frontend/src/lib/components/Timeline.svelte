@@ -10,12 +10,23 @@
   const PAGE_SIZE = 10;
   const events = $derived(buildTimeline(entry));
 
-  let expanded = $state(false);
-  const visibleEvents = $derived(expanded ? events : events.slice(0, PAGE_SIZE));
-
   let editingId = $state<string | null>(null);
   let editBody = $state('');
   let editTime = $state('');
+
+  let expanded = $state(false);
+  // Collapsed view shows the newest PAGE_SIZE events, but always keeps the note
+  // currently being edited visible — otherwise a concurrent refresh that pushes
+  // it past the cutoff would silently discard the open edit form.
+  const visibleEvents = $derived.by(() => {
+    if (expanded) return events;
+    const slice = events.slice(0, PAGE_SIZE);
+    if (editingId && !slice.some((e) => e.kind === 'note' && e.id === editingId)) {
+      const editing = events.find((e) => e.kind === 'note' && e.id === editingId);
+      if (editing) slice.push(editing);
+    }
+    return slice;
+  });
 
   function fmtTime(iso: string): string {
     return new Date(iso + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
