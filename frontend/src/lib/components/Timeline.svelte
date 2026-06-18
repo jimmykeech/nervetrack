@@ -13,6 +13,7 @@
   let editingId = $state<string | null>(null);
   let editBody = $state('');
   let editTime = $state('');
+  let saving = $state(false);
 
   let expanded = $state(false);
   // Collapsed view shows the newest PAGE_SIZE events, but always keeps the note
@@ -54,12 +55,18 @@
   }
 
   async function saveEdit(id: string) {
-    await api.updateNote(id, {
-      body: editBody.trim(),
-      occurred_at: combineDateTimeToISO(date, editTime)
-    });
-    editingId = null;
-    onChanged();
+    if (!editBody.trim() || saving) return;
+    saving = true;
+    try {
+      await api.updateNote(id, {
+        body: editBody.trim(),
+        occurred_at: combineDateTimeToISO(date, editTime)
+      });
+      editingId = null;
+      onChanged();
+    } finally {
+      saving = false;
+    }
   }
 
   async function removeNote(id: string) {
@@ -92,7 +99,7 @@
                 <span>⚡ Pain jab{ev.level != null ? ` · level ${ev.level}` : ''}</span>
                 <span class="rail-time">{fmtTime(ev.at)}</span>
               </div>
-              {#if ev.context}<div class="rail-sub">{ev.context}</div>{/if}
+              {#if ev.context?.trim()}<div class="rail-sub">{ev.context}</div>{/if}
             {:else if ev.kind === 'check'}
               <div class="rail-top">
                 <span>✓ {ev.label}</span>
@@ -105,8 +112,10 @@
                   <input type="time" bind:value={editTime} />
                   <span>
                     <button class="link" onclick={() => (editingId = null)}>cancel</button>
-                    <button class="link" onclick={() => saveEdit(ev.id)} disabled={!editBody.trim()}
-                      >save</button
+                    <button
+                      class="link"
+                      onclick={() => saveEdit(ev.id)}
+                      disabled={!editBody.trim() || saving}>save</button
                     >
                   </span>
                 </div>
