@@ -12,6 +12,7 @@ export type TimelineEvent =
       posture: Posture;
       durationSeconds: number | null;
       running: boolean;
+      label: string | null;
     }
   | { kind: 'pain'; at: string; level: number | null; context: string | null }
   | { kind: 'check'; at: string; label: string }
@@ -33,7 +34,8 @@ export function buildTimeline(entry: DailyEntry): TimelineEvent[] {
       at: iv.started_at,
       posture: iv.posture,
       durationSeconds: iv.duration_seconds,
-      running: iv.ended_at == null
+      running: iv.ended_at == null,
+      label: iv.label
     });
   }
 

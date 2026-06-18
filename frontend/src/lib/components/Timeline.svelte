@@ -7,11 +7,26 @@
   let { entry, date, onChanged }: { entry: DailyEntry; date: string; onChanged: () => void } =
     $props();
 
+  const PAGE_SIZE = 10;
   const events = $derived(buildTimeline(entry));
 
   let editingId = $state<string | null>(null);
   let editBody = $state('');
   let editTime = $state('');
+
+  let expanded = $state(false);
+  // Collapsed view shows the newest PAGE_SIZE events, but always keeps the note
+  // currently being edited visible — otherwise a concurrent refresh that pushes
+  // it past the cutoff would silently discard the open edit form.
+  const visibleEvents = $derived.by(() => {
+    if (expanded) return events;
+    const slice = events.slice(0, PAGE_SIZE);
+    if (editingId && !slice.some((e) => e.kind === 'note' && e.id === editingId)) {
+      const editing = events.find((e) => e.kind === 'note' && e.id === editingId);
+      if (editing) slice.push(editing);
+    }
+    return slice;
+  });
 
   function fmtTime(iso: string): string {
     return new Date(iso + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -59,7 +74,7 @@
     <p class="muted small">Nothing logged yet today.</p>
   {:else}
     <div class="rail">
-      {#each events as ev}
+      {#each visibleEvents as ev}
         <div class="rail-item">
           <span class="rail-dot {dotClass(ev.kind)}"></span>
           <div class="rail-card">
@@ -71,6 +86,7 @@
               <div class="rail-sub">
                 {ev.running ? 'ongoing' : formatMinutesish(ev.durationSeconds ?? 0)}
               </div>
+              {#if ev.label?.trim()}<div class="rail-sub">{ev.label}</div>{/if}
             {:else if ev.kind === 'pain'}
               <div class="rail-top">
                 <span>⚡ Pain jab{ev.level != null ? ` · level ${ev.level}` : ''}</span>
@@ -110,6 +126,11 @@
         </div>
       {/each}
     </div>
+    {#if events.length > PAGE_SIZE}
+      <button class="link show-toggle" onclick={() => (expanded = !expanded)}>
+        {expanded ? 'Show less' : `Show all (${events.length})`}
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -199,5 +220,9 @@
     color: var(--text-muted);
     padding: 0;
     font-size: 0.8rem;
+  }
+  .show-toggle {
+    display: block;
+    margin: 0.6rem auto 0;
   }
 </style>

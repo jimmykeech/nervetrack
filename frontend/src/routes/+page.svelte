@@ -277,7 +277,9 @@
 </div>
 
 {#if entry}
-  <Timeline {entry} {date} onChanged={() => load(date)} />
+  {#key date}
+    <Timeline {entry} {date} onChanged={() => load(date)} />
+  {/key}
 {/if}
 
 <style>
