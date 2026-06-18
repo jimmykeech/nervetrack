@@ -7,10 +7,11 @@
   let { entry, date, onChanged }: { entry: DailyEntry; date: string; onChanged: () => void } =
     $props();
 
+  const PAGE_SIZE = 10;
   const events = $derived(buildTimeline(entry));
 
   let expanded = $state(false);
-  const visibleEvents = $derived(expanded ? events : events.slice(0, 10));
+  const visibleEvents = $derived(expanded ? events : events.slice(0, PAGE_SIZE));
 
   let editingId = $state<string | null>(null);
   let editBody = $state('');
@@ -114,7 +115,7 @@
         </div>
       {/each}
     </div>
-    {#if events.length > 10}
+    {#if events.length > PAGE_SIZE}
       <button class="link show-toggle" onclick={() => (expanded = !expanded)}>
         {expanded ? 'Show less' : `Show all (${events.length})`}
       </button>
