@@ -9,6 +9,9 @@
 
   const events = $derived(buildTimeline(entry));
 
+  let expanded = $state(false);
+  const visibleEvents = $derived(expanded ? events : events.slice(0, 10));
+
   let editingId = $state<string | null>(null);
   let editBody = $state('');
   let editTime = $state('');
@@ -59,7 +62,7 @@
     <p class="muted small">Nothing logged yet today.</p>
   {:else}
     <div class="rail">
-      {#each events as ev}
+      {#each visibleEvents as ev}
         <div class="rail-item">
           <span class="rail-dot {dotClass(ev.kind)}"></span>
           <div class="rail-card">
@@ -111,6 +114,11 @@
         </div>
       {/each}
     </div>
+    {#if events.length > 10}
+      <button class="link show-toggle" onclick={() => (expanded = !expanded)}>
+        {expanded ? 'Show less' : `Show all (${events.length})`}
+      </button>
+    {/if}
   {/if}
 </div>
 
@@ -200,5 +208,9 @@
     color: var(--text-muted);
     padding: 0;
     font-size: 0.8rem;
+  }
+  .show-toggle {
+    display: block;
+    margin: 0.6rem auto 0;
   }
 </style>
