@@ -84,6 +84,37 @@ describe('buildTimeline', () => {
     ]);
   });
 
+  it('carries the timer interval label onto the timer event', () => {
+    const events = buildTimeline(
+      entry({
+        timer_intervals: [
+          {
+            id: 'i1',
+            entry_date: '2026-06-13',
+            posture: 'sitting',
+            started_at: '2026-06-13T09:02:00',
+            ended_at: '2026-06-13T10:20:00',
+            duration_seconds: 4680,
+            label: 'watching tv on couch'
+          },
+          {
+            id: 'i2',
+            entry_date: '2026-06-13',
+            posture: 'standing',
+            started_at: '2026-06-13T11:00:00',
+            ended_at: null,
+            duration_seconds: null,
+            label: null
+          }
+        ]
+      })
+    );
+    expect(events).toMatchObject([
+      { kind: 'timer', label: null },
+      { kind: 'timer', label: 'watching tv on couch' }
+    ]);
+  });
+
   it('flags a running interval and excludes null checkbox times', () => {
     const events = buildTimeline(
       entry({
