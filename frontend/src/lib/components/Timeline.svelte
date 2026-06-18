@@ -71,6 +71,7 @@
               <div class="rail-sub">
                 {ev.running ? 'ongoing' : formatMinutesish(ev.durationSeconds ?? 0)}
               </div>
+              {#if ev.label?.trim()}<div class="rail-sub">{ev.label}</div>{/if}
             {:else if ev.kind === 'pain'}
               <div class="rail-top">
                 <span>⚡ Pain jab{ev.level != null ? ` · level ${ev.level}` : ''}</span>
