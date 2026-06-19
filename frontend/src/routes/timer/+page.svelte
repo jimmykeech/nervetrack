@@ -29,6 +29,12 @@
 
   async function pick(posture: Posture) {
     await store.switchTo(posture, label || undefined);
+    label = '';
+  }
+
+  async function stop() {
+    await store.stop();
+    label = '';
   }
 
   function fmtTime(iso: string): string {
@@ -82,7 +88,7 @@
         {POSTURE_LABEL[p]}
       </button>
     {/each}
-    <button class="stop" onclick={() => store.stop()} disabled={!running}>Stop</button>
+    <button class="stop" onclick={stop} disabled={!running}>Stop</button>
   </div>
 </div>
 
