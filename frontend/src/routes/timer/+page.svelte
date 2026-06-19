@@ -28,7 +28,7 @@
   onDestroy(() => store.stopTicking());
 
   async function pick(posture: Posture) {
-    await store.switchTo(posture, label || undefined);
+    await store.switchTo(posture, label.trim() || undefined);
     label = '';
   }
 
