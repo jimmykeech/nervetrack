@@ -15,6 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import Cookie, Depends, HTTPException
+from passlib.context import CryptContext
 
 from app.config import get_settings
 from app.db import Database
@@ -25,6 +26,40 @@ from app.services.timeutil import now_utc
 SESSION_COOKIE = "nervetrack_session"
 OAUTH_STATE_COOKIE = "nervetrack_oauth_state"
 LOCAL_USER_EMAIL = "local@localhost"
+
+_pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
+
+
+def hash_password(password: str) -> str:
+    return _pwd_context.hash(password)
+
+
+def verify_password(password: str, password_hash: str) -> bool:
+    return _pwd_context.verify(password, password_hash)
+
+
+def create_password_user(
+    db: Database, email: str, password: str, name: str | None
+) -> UUID:
+    """Create a local password account. Raises ValueError if email exists."""
+    if db.query_one("SELECT id FROM users WHERE email = ?", [email]):
+        raise ValueError("email already registered")
+    created = db.query_one(
+        "INSERT INTO users (email, name, password_hash) VALUES (?, ?, ?) RETURNING id",
+        [email, name, hash_password(password)],
+    )
+    assert created is not None
+    seed_user(db, created["id"])
+    return created["id"]
+
+
+def authenticate(db: Database, email: str, password: str) -> UUID | None:
+    row = db.query_one("SELECT id, password_hash FROM users WHERE email = ?", [email])
+    if row is None or not row["password_hash"]:
+        return None
+    if not verify_password(password, row["password_hash"]):
+        return None
+    return row["id"]
 
 
 def get_or_create_local_user(db: Database) -> UUID:

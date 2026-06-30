@@ -6,6 +6,7 @@ import pytest
 
 from fastapi.testclient import TestClient
 
+from app import auth as auth_mod
 from app.config import Settings, get_settings
 from app.main import create_app
 
@@ -39,3 +40,19 @@ def test_none_mode_auto_single_user(db, none_mode):
     c.get("/api/v1/auth/me")
     rows = db.query("SELECT id FROM users WHERE email = ?", ["local@localhost"])
     assert len(rows) == 1
+
+
+def test_password_hash_roundtrip():
+    h = auth_mod.hash_password("hunter2pass")
+    assert h != "hunter2pass"
+    assert auth_mod.verify_password("hunter2pass", h) is True
+    assert auth_mod.verify_password("wrong", h) is False
+
+
+def test_create_and_authenticate_password_user(db):
+    uid = auth_mod.create_password_user(db, "a@example.com", "hunter2pass", "Ay")
+    assert auth_mod.authenticate(db, "a@example.com", "hunter2pass") == uid
+    assert auth_mod.authenticate(db, "a@example.com", "nope") is None
+    assert auth_mod.authenticate(db, "missing@example.com", "x") is None
+    with pytest.raises(ValueError):
+        auth_mod.create_password_user(db, "a@example.com", "another", "Dup")
