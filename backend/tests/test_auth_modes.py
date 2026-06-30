@@ -111,3 +111,10 @@ def test_register_disabled_403(db, monkeypatch):
 def test_google_route_404_in_password_mode(db, password_mode):
     c = TestClient(create_app(), raise_server_exceptions=True)
     assert c.get("/api/v1/auth/google/login", follow_redirects=False).status_code == 404
+
+
+def test_seed_defaults_are_neutral(db, user_id):
+    rows = db.query("SELECT key, value FROM app_settings WHERE user_id = ?", [user_id])
+    settings = {r["key"]: r["value"] for r in rows}
+    assert settings["timezone"] == "UTC"
+    assert settings["week_start_day"] == "0"
