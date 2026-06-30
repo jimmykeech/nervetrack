@@ -7,7 +7,10 @@
 services:
   backend:
     build: ./backend
-    entrypoint: ['uvicorn', 'app.main:app', '--host', '::', '--port', '8000']
+    # Bind IPv4 for local self-hosting: the frontend's Node fetch reaches
+    # `backend:8000` over IPv4 (Docker DNS). Fly's 6PN (IPv6) is handled by the
+    # image's own entrypoint.sh (`--host ::`), which this override replaces here.
+    entrypoint: ['uvicorn', 'app.main:app', '--host', '0.0.0.0', '--port', '8000']
     environment:
       NERVETRACK_DB_PATH: /data/nervetrack.db
       NERVETRACK_TIMEZONE: ${NERVETRACK_TIMEZONE:-UTC}
