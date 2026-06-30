@@ -1,0 +1,29 @@
+# Copy to your private deploy repo as frontend/fly.toml and fill in <...>.
+# Public app: serves the UI and proxies /api to the backend over 6PN.
+app = "<your-frontend-app>"
+primary_region = "<region>"
+
+[build]
+  image = "ghcr.io/<owner>/nervetrack-frontend:latest"
+
+[env]
+  PORT = "3000"
+  BACKEND_URL = "http://<your-backend-app>.internal:8000"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "15s"
+    timeout = "2s"
+    grace_period = "5s"
+    method = "GET"
+    path = "/login"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
