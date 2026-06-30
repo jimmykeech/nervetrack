@@ -1,0 +1,10 @@
+# Run from prebuilt GHCR images instead of building locally:
+#   IMAGE_OWNER=<owner> docker compose -f docker-compose.yml -f docker-compose.images.yml up
+# Override IMAGE_OWNER/IMAGE_TAG as needed.
+services:
+  backend:
+    build: !reset null
+    image: ghcr.io/${IMAGE_OWNER:-OWNER}/nervetrack-backend:${IMAGE_TAG:-latest}
+  frontend:
+    build: !reset null
+    image: ghcr.io/${IMAGE_OWNER:-OWNER}/nervetrack-frontend:${IMAGE_TAG:-latest}
