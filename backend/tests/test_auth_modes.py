@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pytest
-
 from fastapi.testclient import TestClient
 
 from app import auth as auth_mod
@@ -56,3 +55,59 @@ def test_create_and_authenticate_password_user(db):
     assert auth_mod.authenticate(db, "missing@example.com", "x") is None
     with pytest.raises(ValueError):
         auth_mod.create_password_user(db, "a@example.com", "another", "Dup")
+
+
+@pytest.fixture()
+def password_mode(monkeypatch):
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "password")
+    monkeypatch.setenv("NERVETRACK_ALLOW_REGISTRATION", "true")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
+def test_auth_config_reports_mode(db, password_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    body = c.get("/api/v1/auth/config").json()
+    assert body == {"mode": "password", "allow_registration": True}
+
+
+def test_register_then_me(db, password_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    r = c.post(
+        "/api/v1/auth/register",
+        json={"email": "New@Ex.com", "password": "hunter2pass", "name": "N"},
+    )
+    assert r.status_code == 200
+    me = c.get("/api/v1/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == "new@ex.com"  # normalized lower-case
+
+
+def test_login_wrong_password_401(db, password_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    c.post("/api/v1/auth/register", json={"email": "u@ex.com", "password": "hunter2pass"})
+    bad = c.post("/api/v1/auth/login", json={"email": "u@ex.com", "password": "nope"})
+    assert bad.status_code == 401
+
+
+def test_register_duplicate_409(db, password_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    c.post("/api/v1/auth/register", json={"email": "u@ex.com", "password": "hunter2pass"})
+    dup = c.post("/api/v1/auth/register", json={"email": "u@ex.com", "password": "hunter2pass"})
+    assert dup.status_code == 409
+
+
+def test_register_disabled_403(db, monkeypatch):
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "password")
+    monkeypatch.setenv("NERVETRACK_ALLOW_REGISTRATION", "false")
+    get_settings.cache_clear()
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    r = c.post("/api/v1/auth/register", json={"email": "x@ex.com", "password": "hunter2pass"})
+    assert r.status_code == 403
+    get_settings.cache_clear()
+
+
+def test_google_route_404_in_password_mode(db, password_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    assert c.get("/api/v1/auth/google/login", follow_redirects=False).status_code == 404

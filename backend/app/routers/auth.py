@@ -9,10 +9,13 @@ from uuid import UUID
 import httpx
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel, EmailStr, Field
 
 from app.auth import (
     OAUTH_STATE_COOKIE,
     SESSION_COOKIE,
+    authenticate,
+    create_password_user,
     create_session,
     current_user,
     delete_session,
@@ -27,6 +30,53 @@ router = APIRouter(tags=["auth"])
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+
+
+class RegisterIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8)
+    name: str | None = None
+
+
+class LoginIn(BaseModel):
+    email: EmailStr
+    password: str
+
+
+@router.get("/auth/config")
+def auth_config():
+    settings = get_settings()
+    return {"mode": settings.auth_mode, "allow_registration": settings.allow_registration}
+
+
+@router.post("/auth/register")
+def register(body: RegisterIn, db: Database = Depends(db_dep)):
+    settings = get_settings()
+    if settings.auth_mode != "password":
+        raise HTTPException(404, "Not found")
+    if not settings.allow_registration:
+        raise HTTPException(403, "Registration is closed")
+    try:
+        user_id = create_password_user(db, body.email.lower(), body.password, body.name)
+    except ValueError:
+        raise HTTPException(409, "Email already registered") from None
+    token = create_session(db, user_id)
+    resp = JSONResponse({"ok": True})
+    _set_session_cookie(resp, token)
+    return resp
+
+
+@router.post("/auth/login")
+def login(body: LoginIn, db: Database = Depends(db_dep)):
+    if get_settings().auth_mode != "password":
+        raise HTTPException(404, "Not found")
+    user_id = authenticate(db, body.email.lower(), body.password)
+    if user_id is None:
+        raise HTTPException(401, "Invalid email or password")
+    token = create_session(db, user_id)
+    resp = JSONResponse({"ok": True})
+    _set_session_cookie(resp, token)
+    return resp
 
 
 def _set_session_cookie(resp, token: str) -> None:
@@ -45,6 +95,8 @@ def _set_session_cookie(resp, token: str) -> None:
 @router.get("/auth/google/login")
 def google_login():
     settings = get_settings()
+    if settings.auth_mode != "google":
+        raise HTTPException(404, "Not found")
     if not settings.google_client_id:
         raise HTTPException(500, "Google OAuth is not configured")
     state = secrets.token_urlsafe(24)
@@ -81,6 +133,8 @@ def google_callback(
     db: Database = Depends(db_dep),
 ):
     settings = get_settings()
+    if settings.auth_mode != "google":
+        raise HTTPException(404, "Not found")
     login_url = f"{settings.frontend_url}/login"
 
     def fail(reason: str) -> RedirectResponse:
