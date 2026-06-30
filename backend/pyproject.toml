@@ -2,6 +2,7 @@
 name = "nervetrack-backend"
 version = "0.1.0"
 description = "NerveTrack backend — piriformis recovery tracking API"
+license = "AGPL-3.0-only"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.111",
