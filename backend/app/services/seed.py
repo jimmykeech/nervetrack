@@ -26,10 +26,11 @@ EXERCISE_SEED: list[str] = [
     "Dumbbell Curls",
 ]
 
-# Default app settings. Week start day: 4 = Friday (Mon=0).
+# Default app settings. Week start day: 0 = Monday (Mon=0). Neutral defaults;
+# operators override via NERVETRACK_* env / per-user settings.
 SETTINGS_SEED: dict[str, str] = {
-    "week_start_day": "4",
-    "timezone": "Australia/Sydney",
+    "week_start_day": "0",
+    "timezone": "UTC",
     "sitting_nudge_minutes": "45",
 }
 

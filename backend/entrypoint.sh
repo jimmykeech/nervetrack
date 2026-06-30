@@ -1,12 +1,19 @@
 #!/bin/sh
 set -e
 
-# Rebuild the DB from Tigris if the volume has none (fresh/host-replaced machine).
-# -if-db-not-exists: skip when the DB is already on the volume.
-# -if-replica-exists: on the very first deploy the bucket is empty — exit 0 (no-op)
-# instead of erroring, so `set -e` doesn't crash-loop before replicate seeds it.
-litestream restore -if-db-not-exists -if-replica-exists -config /etc/litestream.yml /data/nervetrack.db
+DB_PATH="${NERVETRACK_DB_PATH:-/data/nervetrack.db}"
+SERVE="uvicorn app.main:app --host :: --port 8000"
 
-# Run the app under Litestream so the WAL streams to Tigris continuously.
-exec litestream replicate -config /etc/litestream.yml \
-  -exec "uvicorn app.main:app --host :: --port 8000"
+# Litestream is opt-in: enabled only when an S3 bucket is configured (BUCKET_NAME
+# + credentials, as injected by `fly storage create`). Without it the image runs
+# uvicorn directly, so it works fully offline / for local self-hosting.
+if [ -n "${BUCKET_NAME:-}" ] && [ -n "${AWS_ACCESS_KEY_ID:-}" ]; then
+  # Rebuild the DB from the bucket if the volume has none (fresh machine).
+  # -if-replica-exists: on the very first deploy the bucket is empty — exit 0
+  # (no-op) instead of erroring under `set -e` before replicate seeds it.
+  litestream restore -if-db-not-exists -if-replica-exists -config /etc/litestream.yml "$DB_PATH"
+  # Run the app under Litestream so the WAL streams to the bucket continuously.
+  exec litestream replicate -config /etc/litestream.yml -exec "$SERVE"
+fi
+
+exec $SERVE

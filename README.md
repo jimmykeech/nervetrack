@@ -15,29 +15,28 @@ weekly aggregation, and spreadsheet import.
 - **Backend:** FastAPI (Python 3.12+), Pydantic v2, uvicorn.
 - **Database:** SQLite in WAL mode, a single file on a persistent volume. The backend
   owns the file; `backend/app/migrations/*.sql` are applied in order on startup by a
-  tiny built-in migration runner. In production the WAL is streamed off-box
-  continuously by [Litestream](https://litestream.io) to an S3 bucket (see
-  [Deployment](#deployment)).
+  tiny built-in migration runner. For cloud deployments the WAL can optionally be
+  streamed off-box continuously by [Litestream](https://litestream.io) to an
+  S3 bucket (see [Deployment](#deployment)); offline/local runs just use the file.
 - **API:** JSON REST under `/api/v1/`.
 
 ## Accounts & login
 
-NerveTrack is **multi-user and invite-only**, with **Google sign-in**. Each account
-sees only its own data. Before first run:
+NerveTrack supports three auth modes via `NERVETRACK_AUTH_MODE`; each account sees
+only its own data:
 
-1. In **Google Cloud Console → APIs & Services → Credentials**, create an
-   **OAuth 2.0 Client ID** of type *Web application*.
-2. Add the authorized redirect URI
-   `http://localhost:3000/api/v1/auth/google/callback`
-   (add the `:5173` variant too if you use the dev compose file).
-3. Create a `.env` in the repo root (see [Configuration](#configuration)) and set at
-   least `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ALLOWED_EMAILS`
-   (comma-separated — only these Google accounts may sign in).
+- **`none`** (default) — no login; a single local user. Ideal for a private
+  local/LAN install with no internet. Just run it.
+- **`password`** — local email + password accounts (hashed with Argon2). Open
+  registration by default (`NERVETRACK_ALLOW_REGISTRATION`); set it to `false`
+  once your accounts exist to lock the instance.
+- **`google`** — invite-only Google sign-in (`NERVETRACK_ALLOWED_EMAILS`).
+  Requires a Google OAuth Web client and internet access.
 
-Login flow: the browser hits `/api/v1/auth/google/login` → Google consent → the
-backend verifies the identity, checks the invite list, and sets an **httpOnly session
-cookie** (opaque token stored in the database). Non-invited accounts are refused. Set
-`COOKIE_SECURE=true` when serving over https.
+All modes share the same session machinery: an **httpOnly session cookie** holding
+an opaque token stored in the database. Set `COOKIE_SECURE=true` when serving over
+https. For Google OAuth client setup and cloud configuration, see
+**[docs/DEPLOY.md](docs/DEPLOY.md)**.
 
 ## Configuration
 
@@ -48,18 +47,21 @@ vars. No `.env` is committed (it holds secrets); create your own.
 
 | `.env` key (Docker) | Backend var | Default | Purpose |
 |---|---|---|---|
-| `GOOGLE_CLIENT_ID` | `NERVETRACK_GOOGLE_CLIENT_ID` | — | Google Web OAuth client id |
+| `NERVETRACK_AUTH_MODE` | `NERVETRACK_AUTH_MODE` | `none` | Auth mode: `none`, `password`, or `google` |
+| `NERVETRACK_ALLOW_REGISTRATION` | `NERVETRACK_ALLOW_REGISTRATION` | `true` | Allow self-service sign-up in `password` mode |
+| `GOOGLE_CLIENT_ID` | `NERVETRACK_GOOGLE_CLIENT_ID` | — | Google Web OAuth client id (google mode) |
 | `GOOGLE_CLIENT_SECRET` | `NERVETRACK_GOOGLE_CLIENT_SECRET` | — | Google Web OAuth client secret |
 | `ALLOWED_EMAILS` | `NERVETRACK_ALLOWED_EMAILS` | — | Comma-separated invite list (empty = nobody) |
 | `OAUTH_REDIRECT_URI` | `NERVETRACK_OAUTH_REDIRECT_URI` | `http://localhost:3000/api/v1/auth/google/callback` | Must match the Google console redirect URI |
 | `FRONTEND_URL` | `NERVETRACK_FRONTEND_URL` | `http://localhost:3000` | Where to send the browser after login |
 | `SESSION_TTL_DAYS` | `NERVETRACK_SESSION_TTL_DAYS` | `30` | Session cookie lifetime |
 | `COOKIE_SECURE` | `NERVETRACK_COOKIE_SECURE` | `false` | Mark the session cookie `Secure` (set `true` over https) |
-| `NERVETRACK_TIMEZONE` | `NERVETRACK_TIMEZONE` | `Australia/Sydney` | Timezone used to derive calendar dates from UTC |
+| `NERVETRACK_TIMEZONE` | `NERVETRACK_TIMEZONE` | `UTC` | Timezone used to derive calendar dates from UTC |
 | `NERVETRACK_DB_PATH` | `NERVETRACK_DB_PATH` | `/data/nervetrack.db` | SQLite file path |
-| `NERVETRACK_WEEK_START_DAY` | `NERVETRACK_WEEK_START_DAY` | `4` (Friday) | Day the tracking week starts (0=Mon..6=Sun) |
+| `NERVETRACK_WEEK_START_DAY` | `NERVETRACK_WEEK_START_DAY` | `0` (Monday) | Day the tracking week starts (0=Mon..6=Sun) |
 | `BACKEND_URL` | — | `http://backend:8000` | Frontend (prod Node server) → backend base URL |
 | `VITE_API_PROXY` | — | `http://localhost:8000` | Frontend (dev Vite proxy) → backend base URL |
+| `BUCKET_NAME` + `AWS_*` | — | — | Optional: enable Litestream backup to an S3 bucket (see [docs/DEPLOY.md](docs/DEPLOY.md)) |
 | `ANTHROPIC_API_KEY` | `NERVETRACK_ANTHROPIC_API_KEY` | — | Reserved for Phase 2; unused in Phase 1 |
 
 > Running the backend **locally without Docker** loads `backend/.env` via
@@ -71,10 +73,13 @@ vars. No `.env` is committed (it holds secrets); create your own.
 Prod-style (frontend on :3000, backend on :8000):
 
 ```bash
-# create .env with GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / ALLOWED_EMAILS (see Configuration)
+# Defaults run offline in single-user mode (no secrets needed):
 docker compose up --build
-# open http://localhost:3000  → redirected to /login
+# open http://localhost:3000  → straight into the app (auth mode "none")
 ```
+
+To require login, set `NERVETRACK_AUTH_MODE=password` (or `google`, with its
+credentials) in a `.env` — copy `.env.example` to start. See [Configuration](#configuration).
 
 Development with hot reload (Vite dev server on :5173, uvicorn `--reload`):
 
@@ -154,10 +159,11 @@ Interactive docs at `http://localhost:8000/docs` when the backend is running.
   is a single action). The running interval lives server-side, so closing the tab
   doesn't lose it — the UI restores it via `GET /timer/current`.
 - **Time**: all timestamps are stored in UTC; calendar dates are derived in the
-  configured timezone (`NERVETRACK_TIMEZONE`, default `Australia/Sydney`), so a
-  23:00 sitting interval lands on the correct local day.
-- **Weeks**: tracking weeks run Friday→Thursday by default (`NERVETRACK_WEEK_START_DAY`).
-  Suggested overall status: R if any red day, A if ≥3 amber days, else G.
+  configured timezone (`NERVETRACK_TIMEZONE`, default `UTC`), so a 23:00 sitting
+  interval lands on the correct local day once you set your zone.
+- **Weeks**: the tracking week starts on `NERVETRACK_WEEK_START_DAY` (default
+  `0` = Monday, so Monday→Sunday). Suggested overall status: R if any red day,
+  A if ≥3 amber days, else G.
 
 ## Pages
 
@@ -194,16 +200,40 @@ push to `main`.
 
 ## Deployment
 
-NerveTrack deploys to [Fly.io](https://fly.io) as two apps — a **private** backend
+Container images are published to **GHCR** on every `v*` tag
+(`ghcr.io/<owner>/nervetrack-backend` and `…-frontend`, via
+`.github/workflows/release.yml`). The app is two containers — a **private** backend
 (FastAPI + SQLite on a volume) and a **public** frontend (SvelteKit, proxies `/api`
-to the backend over Fly's private network). The SQLite WAL is replicated continuously
-to a [Tigris](https://www.tigrisdata.com) S3 bucket via Litestream
-(`backend/litestream.yml`, `backend/entrypoint.sh`), and restored on a fresh machine.
-Deploys are tag-triggered (`git tag v* && git push --tags`) via
-`.github/workflows/fly-deploy.yml`.
+to the backend). Run them locally with Docker or deploy to any cloud; the backend
+optionally streams its SQLite WAL to an S3-compatible bucket via Litestream for
+durable backup (set `BUCKET_NAME` + `AWS_*`, otherwise it just runs the local file).
 
-Full instructions — app creation, volume, secrets, OAuth redirect, custom domain,
-rollback, and backups — are in **[docs/DEPLOY-FLY.md](docs/DEPLOY-FLY.md)**.
+Full instructions — auth modes, Google OAuth setup, optional backup, and a Fly.io
+worked example — are in **[docs/DEPLOY.md](docs/DEPLOY.md)**. Deploy templates live
+in `deploy/fly/`.
+
+### Splitting out your own deployment
+
+Keep this repo generic and put your real deployment in a **private**
+`nervetrack-deploy` repo that consumes the published images:
+
+1. Create the private repo; copy `deploy/fly/*.example` to `backend/fly.toml` /
+   `frontend/fly.toml` and fill in your app names, region, and domain.
+2. Pin an image tag (`flyctl deploy --image ghcr.io/<owner>/nervetrack-backend:vX.Y.Z`).
+3. Put secrets in `fly secrets` (Google client secret, `ALLOWED_EMAILS`, and
+   `BUCKET_NAME` + `AWS_*` for backup) — never in git.
+4. Add a `deploy.yml` workflow (`workflow_dispatch`) that runs `flyctl deploy
+   --image …:<tag>` with a `FLY_API_TOKEN` secret.
+5. To upgrade: bump the image tag to a new release and redeploy.
+
+Your data lives entirely in the Fly volume and backup bucket — never in a repo — so
+migrating to a private deploy repo never touches it. See the step-by-step migration
+runbook in **[docs/DEPLOY.md](docs/DEPLOY.md)**.
+
+## License
+
+NerveTrack is licensed under **AGPL-3.0** (see [LICENSE](LICENSE)). If you run a
+modified version as a network service, you must offer your users its source.
 
 ## Phase 2 (not built)
 

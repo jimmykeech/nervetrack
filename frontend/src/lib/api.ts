@@ -46,6 +46,11 @@ export interface CurrentUser {
   name: string | null;
 }
 
+export interface AuthConfig {
+  mode: 'none' | 'password' | 'google';
+  allow_registration: boolean;
+}
+
 export const api = {
   // Auth
   me: () =>
@@ -54,6 +59,17 @@ export const api = {
       throw e;
     }),
   logout: () => request('/auth/logout', { method: 'POST' }),
+  authConfig: () => request<AuthConfig>('/auth/config'),
+  register: (email: string, password: string, name?: string) =>
+    request<{ ok: boolean }>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name })
+    }),
+  login: (email: string, password: string) =>
+    request<{ ok: boolean }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password })
+    }),
 
   // Entries
   listEntries: (from?: string, to?: string) => {

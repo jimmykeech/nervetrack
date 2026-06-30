@@ -16,6 +16,7 @@ CALLBACK = "/api/v1/auth/google/callback"
 
 @pytest.fixture()
 def oauth_env(monkeypatch):
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "google")
     monkeypatch.setenv("NERVETRACK_ALLOWED_EMAILS", "allowed@example.com")
     get_settings.cache_clear()
     yield
@@ -104,5 +105,5 @@ def test_logout_clears_session(client, oauth_env, monkeypatch):
     assert client.get("/api/v1/auth/me").status_code == 401
 
 
-def test_me_requires_auth(client):
+def test_me_requires_auth(client, oauth_env):
     assert client.get("/api/v1/auth/me").status_code == 401

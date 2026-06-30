@@ -1,7 +1,7 @@
 name: CI
 
 # Runs on every PR and on pushes to main. Keeps main always-releasable.
-# Deploys are separate and happen on v* tags (see fly-deploy.yml).
+# Image publishing is separate and happens on v* tags (see release.yml).
 on:
   pull_request:
   push:

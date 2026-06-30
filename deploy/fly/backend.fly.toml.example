@@ -1,0 +1,42 @@
+# Copy to your private deploy repo as backend/fly.toml and fill in <...>.
+# Private app: no public HTTP service; reachable only from the frontend over the
+# 6PN private network. SQLite is single-writer — run exactly ONE machine.
+app = "<your-backend-app>"
+primary_region = "<region>"
+
+[deploy]
+  strategy = "immediate"
+
+# Deploy from a published image instead of building:
+#   flyctl deploy --image ghcr.io/<owner>/nervetrack-backend:vX.Y.Z
+[build]
+  image = "ghcr.io/<owner>/nervetrack-backend:latest"
+
+[env]
+  NERVETRACK_DB_PATH = "/data/nervetrack.db"
+  NERVETRACK_TIMEZONE = "<Area/City>"
+  NERVETRACK_COOKIE_SECURE = "true"
+  NERVETRACK_AUTH_MODE = "google"            # or "password"
+  NERVETRACK_FRONTEND_URL = "https://<your-domain>"
+  NERVETRACK_OAUTH_REDIRECT_URI = "https://<your-domain>/api/v1/auth/google/callback"
+  NERVETRACK_CORS_ORIGINS = '["https://<your-domain>"]'
+  # Secrets via `fly secrets set`: NERVETRACK_GOOGLE_CLIENT_ID,
+  # NERVETRACK_GOOGLE_CLIENT_SECRET, NERVETRACK_ALLOWED_EMAILS, and (for backup)
+  # BUCKET_NAME + AWS_* from `fly storage create`.
+
+[mounts]
+  source = "nervetrack_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
+[checks.health]
+  type = "http"
+  port = 8000
+  method = "get"
+  path = "/healthz"
+  interval = "15s"
+  timeout = "2s"
+  grace_period = "30s"
