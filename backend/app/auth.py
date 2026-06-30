@@ -24,6 +24,21 @@ from app.services.timeutil import now_utc
 
 SESSION_COOKIE = "nervetrack_session"
 OAUTH_STATE_COOKIE = "nervetrack_oauth_state"
+LOCAL_USER_EMAIL = "local@localhost"
+
+
+def get_or_create_local_user(db: Database) -> UUID:
+    """Resolve the single local user (none mode), creating+seeding on first use."""
+    existing = db.query_one("SELECT id FROM users WHERE email = ?", [LOCAL_USER_EMAIL])
+    if existing:
+        return existing["id"]
+    created = db.query_one(
+        "INSERT INTO users (google_sub, email, name) VALUES (NULL, ?, ?) RETURNING id",
+        [LOCAL_USER_EMAIL, "Local"],
+    )
+    assert created is not None
+    seed_user(db, created["id"])
+    return created["id"]
 
 
 def _hash_token(token: str) -> str:
@@ -100,6 +115,8 @@ def current_user(
     db: Database = Depends(db_dep),
 ) -> UUID:
     """FastAPI dependency: resolve the signed-in user or raise 401."""
+    if get_settings().auth_mode == "none":
+        return get_or_create_local_user(db)
     if not session_token:
         raise HTTPException(401, "Not authenticated")
     user = user_for_token(db, session_token)

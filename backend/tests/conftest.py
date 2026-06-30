@@ -15,9 +15,21 @@ from fastapi.testclient import TestClient
 
 import app.db as db_module
 from app.auth import SESSION_COOKIE, create_session
+from app.config import get_settings
 from app.db import Database
 from app.main import create_app
 from app.services.seed import seed_user
+
+
+@pytest.fixture(autouse=True)
+def _cookie_auth_mode(monkeypatch):
+    # Shared fixtures (auth_client) rely on cookie-based identity; password mode
+    # honours the cookie exactly like the old behaviour. none/google tests
+    # override this in their own fixtures.
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "password")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture()

@@ -4,7 +4,18 @@ from __future__ import annotations
 
 import pytest
 
+from fastapi.testclient import TestClient
+
 from app.config import Settings, get_settings
+from app.main import create_app
+
+
+@pytest.fixture()
+def none_mode(monkeypatch):
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "none")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 def test_config_defaults_are_neutral(monkeypatch):
@@ -16,3 +27,15 @@ def test_config_defaults_are_neutral(monkeypatch):
     assert s.allow_registration is True
     assert s.timezone == "UTC"
     assert s.week_start_day == 0
+
+
+def test_none_mode_auto_single_user(db, none_mode):
+    c = TestClient(create_app(), raise_server_exceptions=True)
+    # No cookie at all, yet /auth/me works and is the local user.
+    me = c.get("/api/v1/auth/me")
+    assert me.status_code == 200
+    assert me.json()["email"] == "local@localhost"
+    # Second call resolves the SAME user (no duplicate rows).
+    c.get("/api/v1/auth/me")
+    rows = db.query("SELECT id FROM users WHERE email = ?", ["local@localhost"])
+    assert len(rows) == 1
