@@ -47,7 +47,8 @@ describe('buildTimeline', () => {
             daily_entry_id: 'e1',
             occurred_at: '2026-06-13T11:15:00',
             pain_level: 4,
-            context: 'desk'
+            context: 'desk',
+            instance_ids: []
           }
         ],
         notes: [
