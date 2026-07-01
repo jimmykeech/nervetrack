@@ -13,6 +13,7 @@ from app.routers import (
     ai,
     auth,
     daily_entries,
+    documents,
     exercises,
     imports,
     pain_instances,
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
     for module in (
         auth,
         daily_entries,
+        documents,
         exercises,
         pain_instances,
         records,

@@ -8,7 +8,9 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.auth import current_user
 from app.deps import db_dep
+from app.models.pain_instances import PainInstance
 from app.models.records import (
+    ConditionDetail,
     ConditionNote,
     ConditionNoteIn,
     ConditionNoteUpdate,
@@ -16,6 +18,7 @@ from app.models.records import (
     PatientProfileIn,
 )
 from app.services import condition_notes as notes_service
+from app.services import documents as documents_service
 from app.services import profile as profile_service
 
 router = APIRouter(tags=["records"])
@@ -65,3 +68,19 @@ def delete_condition_note(
 ):
     if not notes_service.delete_note(db, user_id, note_id):
         raise HTTPException(404, "No such note")
+
+
+@router.get("/pain-instances/{instance_id}", response_model=ConditionDetail)
+def condition_detail(
+    instance_id: UUID, db=Depends(db_dep), user_id: UUID = Depends(current_user)
+):
+    row = db.query_one(
+        "SELECT * FROM pain_instances WHERE id = ? AND user_id = ?", [instance_id, user_id]
+    )
+    if row is None:
+        raise HTTPException(404, "No such pain instance")
+    return ConditionDetail(
+        instance=PainInstance(**row),
+        notes=notes_service.list_notes(db, user_id, instance_id),
+        documents=documents_service.list_documents(db, user_id, instance_id=instance_id),
+    )
