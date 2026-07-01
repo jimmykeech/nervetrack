@@ -19,10 +19,37 @@ def test_schemas_are_wellformed():
         "list_weeks", "get_week_summary", "get_daily_entry", "get_daily_entries",
         "get_pain_events", "get_timer_day", "get_posture_totals",
         "get_strengthening_sessions", "get_stats", "list_pain_instances",
+        "get_condition_notes", "list_documents",
     } == names
     for t in ai_tools.TOOL_SCHEMAS:
         assert t["type"] == "function"
         assert "parameters" in t["function"]
+
+
+def test_new_tools_registered():
+    names = {t["function"]["name"] for t in ai_tools.TOOL_SCHEMAS}
+    assert {"get_condition_notes", "list_documents"} <= names
+
+
+def test_get_condition_notes_and_list_documents(db, user_id):
+    from app.models.pain_instances import PainInstanceCreate
+    from app.services import condition_notes as cn
+    from app.services import documents as docs
+    from app.services import pain_instances as pi
+
+    iid = pi.create_instance(db, user_id, PainInstanceCreate(name="Left sciatic")).id
+    cn.add_note(db, user_id, iid, None, "started PT")
+    docs.create_document(
+        db, user_id, owner_type="condition", instance_id=iid, title="MRI",
+        notes="disc bulge", filename="m.pdf", mime_type="application/pdf", content=b"%PDF x",
+    )
+
+    notes = ai_tools.dispatch(db, user_id, "get_condition_notes", {"instance_id": str(iid)})
+    assert notes[0]["body"] == "started PT"
+
+    listed = ai_tools.dispatch(db, user_id, "list_documents", {})
+    assert listed[0]["title"] == "MRI" and listed[0]["notes"] == "disc bulge"
+    assert "content" not in listed[0]
 
 
 def test_pain_instances_catalogue_and_tags(db, user_id):

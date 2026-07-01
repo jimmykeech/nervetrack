@@ -12,6 +12,8 @@ from typing import Any
 from uuid import UUID
 
 from app.db import Database
+from app.services import condition_notes as condition_notes_service
+from app.services import documents as documents_service
 from app.services import entries as entries_service
 from app.services import pain_instances as pain_instances_service
 from app.services import sessions as sessions_service
@@ -83,6 +85,20 @@ TOOL_SCHEMAS: list[dict] = [
                        "pain events and sessions to human-readable names.",
         "parameters": {"type": "object", "properties": {}},
     }},
+    {"type": "function", "function": {
+        "name": "get_condition_notes",
+        "description": "The dated notes log for one condition (pain instance), newest first.",
+        "parameters": {"type": "object", "properties": {"instance_id": {
+            "type": "string", "description": "pain instance UUID"}},
+            "required": ["instance_id"]},
+    }},
+    {"type": "function", "function": {
+        "name": "list_documents",
+        "description": "The user's supporting documents (medical reports/imaging) as metadata: "
+                       "title, the user's notes/summary, which condition (if any), and filename. "
+                       "The file contents are NOT available.",
+        "parameters": {"type": "object", "properties": {}},
+    }},
 ]
 
 
@@ -116,6 +132,11 @@ def dispatch(db: Database, user_id: UUID, name: str, arguments: dict[str, Any]) 
     if name == "list_pain_instances":
         instances = pain_instances_service.list_instances(db, user_id)
         return [i.model_dump(mode="json") for i in instances]
+    if name == "get_condition_notes":
+        notes = condition_notes_service.list_notes(db, user_id, UUID(a["instance_id"]))
+        return [n.model_dump(mode="json") for n in notes]
+    if name == "list_documents":
+        return [d.model_dump(mode="json") for d in documents_service.list_documents(db, user_id)]
     raise ValueError(f"unknown tool: {name}")
 
 
