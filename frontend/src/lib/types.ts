@@ -194,3 +194,38 @@ export interface DailyStatPoint {
   lying_minutes: number;
   walking_minutes: number;
 }
+
+export interface PatientProfile {
+  dob: string | null;
+  sex: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  lifestyle: string | null;
+  medical_history: string | null;
+}
+
+export interface ConditionNote {
+  id: string;
+  instance_id: string;
+  occurred_at: string;
+  body: string;
+  created_at: string | null;
+}
+
+export interface DocumentMeta {
+  id: string;
+  owner_type: string;
+  instance_id: string | null;
+  title: string;
+  notes: string | null;
+  filename: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at: string | null;
+}
+
+export interface ConditionDetail {
+  instance: PainInstance;
+  notes: ConditionNote[];
+  documents: DocumentMeta[];
+}
