@@ -9,6 +9,7 @@ import type {
   Exercise,
   Interval,
   Note,
+  PainInstance,
   Posture,
   SessionDetail,
   WeeklySummary
@@ -87,7 +88,12 @@ export const api = {
     request<DailyEntry>(`/entries/${date}`, { method: 'PUT', body: JSON.stringify(data) }),
   addPainEvent: (
     date: string,
-    data: { pain_level?: number; context?: string; occurred_at?: string }
+    data: {
+      pain_level?: number;
+      context?: string;
+      occurred_at?: string;
+      instance_ids?: string[];
+    }
   ) => request(`/entries/${date}/pain-events`, { method: 'POST', body: JSON.stringify(data) }),
   deletePainEvent: (id: string) => request(`/pain-events/${id}`, { method: 'DELETE' }),
   addNote: (date: string, data: { body: string; occurred_at?: string }) =>
@@ -112,6 +118,16 @@ export const api = {
   latestSession: () => request<SessionDetail | null>('/sessions/latest'),
   progression: (exerciseId: string) =>
     request<Record<string, unknown>[]>(`/exercises/${exerciseId}/progression`),
+
+  // Pain instances
+  listPainInstances: () => request<PainInstance[]>('/pain-instances'),
+  createPainInstance: (data: { name: string; body_region?: string; background?: string }) =>
+    request<PainInstance>('/pain-instances', { method: 'POST', body: JSON.stringify(data) }),
+  patchPainInstance: (id: string, data: Partial<PainInstance>) =>
+    request<PainInstance>(`/pain-instances/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
 
   // Timer
   startTimer: (posture: Posture, label?: string) =>

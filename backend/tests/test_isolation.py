@@ -52,3 +52,13 @@ def test_weeks_are_per_user(db, user_id, make_user):
     entries_service.upsert_entry(db, user_id, date(2026, 6, 13), DailyEntryUpsert(status="A"))
     assert len(weekly_service.list_weeks(db, user_id)) == 1
     assert len(weekly_service.list_weeks(db, other)) == 0
+
+
+def test_pain_instances_are_per_user(db, user_id, make_user):
+    from app.models.pain_instances import PainInstanceCreate
+    from app.services import pain_instances as pain_instances_service
+
+    other = make_user()
+    pain_instances_service.create_instance(db, user_id, PainInstanceCreate(name="Left sciatic"))
+    assert len(pain_instances_service.list_instances(db, user_id)) == 1
+    assert len(pain_instances_service.list_instances(db, other)) == 0

@@ -15,6 +15,7 @@
   import type { DailyEntry, Status } from '$lib/types';
   import NoteComposer from '$lib/components/NoteComposer.svelte';
   import Timeline from '$lib/components/Timeline.svelte';
+  import { activePainInstances, painInstances } from '$lib/stores/painInstances.svelte';
 
   let date = $state($page.url.searchParams.get('date') ?? todayISO());
   let entry = $state<DailyEntry | null>(null);
@@ -40,6 +41,20 @@
   let jabTimeOpen = $state(false);
   let jabTime = $state('');
   const jabDefaultTime = $derived(defaultJabTime(date));
+  let jabInstanceIds = $state<string[]>([]);
+
+  function toggleJabInstance(id: string) {
+    jabInstanceIds = jabInstanceIds.includes(id)
+      ? jabInstanceIds.filter((x) => x !== id)
+      : [...jabInstanceIds, id];
+  }
+
+  function instanceNames(ids: string[]): string {
+    return ids
+      .map((id) => painInstances.list.find((p) => p.id === id)?.name)
+      .filter((n): n is string => Boolean(n))
+      .join(', ');
+  }
 
   let saveTimer: ReturnType<typeof setTimeout> | null = null;
   let loadedKey = $state('');
@@ -98,11 +113,13 @@
     await api.addPainEvent(date, {
       pain_level: jabLevel ?? undefined,
       context: jabContext || undefined,
-      occurred_at: sendTime ? combineDateTimeToISO(date, hhmm) : undefined
+      occurred_at: sendTime ? combineDateTimeToISO(date, hhmm) : undefined,
+      instance_ids: jabInstanceIds
     });
     jabContext = '';
     jabTimeOpen = false;
     jabTime = '';
+    jabInstanceIds = [];
     showJab = false;
     await load(date);
   }
@@ -231,6 +248,20 @@
       </div>
       <button class="status-G" style="align-self: flex-end" onclick={logJab}>Log</button>
     </div>
+    {#if activePainInstances().length}
+      <div class="chips">
+        {#each activePainInstances() as pi (pi.id)}
+          <button
+            type="button"
+            class="chip"
+            class:on={jabInstanceIds.includes(pi.id)}
+            onclick={() => toggleJabInstance(pi.id)}
+          >
+            {pi.name}
+          </button>
+        {/each}
+      </div>
+    {/if}
     <div class="jab-time">
       {#if jabTimeOpen}
         <label for="jab-time-input">Time</label>
@@ -255,7 +286,7 @@
           <span
             >{fmtTime(ev.occurred_at)} · level {ev.pain_level ?? '—'}{ev.context
               ? ` · ${ev.context}`
-              : ''}</span
+              : ''}{ev.instance_ids.length ? ` · ${instanceNames(ev.instance_ids)}` : ''}</span
           >
           <button class="link" onclick={() => removeJab(ev.id)}>remove</button>
         </li>
@@ -360,5 +391,23 @@
   .totals a {
     display: inline-block;
     margin-top: 0.5rem;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.6rem;
+  }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+  }
+  .chip.on {
+    border-color: var(--accent);
+    color: var(--text);
   }
 </style>

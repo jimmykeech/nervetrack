@@ -14,6 +14,16 @@ export interface PainEvent {
   occurred_at: string;
   pain_level: number | null;
   context: string | null;
+  instance_ids: string[];
+}
+
+export interface PainInstance {
+  id: string;
+  name: string;
+  body_region: string | null;
+  background: string | null;
+  active: boolean;
+  sort_order: number;
 }
 
 export interface Note {
@@ -46,6 +56,7 @@ export interface SessionDetail {
   intensity: number | null;
   notes: string | null;
   logs: ExerciseLog[];
+  instance_ids: string[];
 }
 
 export interface DailyEntry {

@@ -16,6 +16,7 @@ from app.models.entries import (
     PostureTotals,
 )
 from app.models.timer import Interval
+from app.services import pain_instances as pain_instances_service
 from app.services import sessions as sessions_service
 from app.services import timer as timer_service
 from app.services.timeutil import now_utc, to_utc_naive
@@ -127,7 +128,7 @@ def get_entry(db: Database, user_id: UUID, entry_date: date) -> DailyEntry | Non
     if not row:
         return None
     events = [
-        PainEvent(**e)
+        PainEvent(**e, instance_ids=_pain_event_instance_ids(db, e["id"]))
         for e in db.query(
             "SELECT * FROM pain_events WHERE daily_entry_id = ? ORDER BY occurred_at",
             [row["id"]],
@@ -160,11 +161,34 @@ def get_entry(db: Database, user_id: UUID, entry_date: date) -> DailyEntry | Non
     )
 
 
+def _tag_pain_event(db: Database, event_id: UUID, instance_ids: list) -> None:
+    for iid in dict.fromkeys(instance_ids):
+        db.execute(
+            "INSERT INTO pain_event_instances (pain_event_id, instance_id) VALUES (?, ?)",
+            [event_id, iid],
+        )
+
+
+def _pain_event_instance_ids(db: Database, event_id: UUID) -> list:
+    rows = db.query(
+        "SELECT instance_id FROM pain_event_instances WHERE pain_event_id = ?", [event_id]
+    )
+    return [r["instance_id"] for r in rows]
+
+
 def add_pain_event(
-    db: Database, user_id: UUID, entry_date: date, occurred_at, pain_level, context
+    db: Database,
+    user_id: UUID,
+    entry_date: date,
+    occurred_at,
+    pain_level,
+    context,
+    instance_ids: list | None = None,
 ) -> PainEvent:
+    instance_ids = instance_ids or []
     with db.cursor():
         entry_id = ensure_entry(db, user_id, entry_date)
+        pain_instances_service.validate_instances(db, user_id, instance_ids)
         occurred = to_utc_naive(occurred_at) if occurred_at else now_utc()
         created = db.query_one(
             """
@@ -174,10 +198,11 @@ def add_pain_event(
             """,
             [entry_id, occurred, pain_level, context],
         )
+        assert created is not None
+        _tag_pain_event(db, created["id"], instance_ids)
         # Keep the day's summary count and worst-pain consistent with logged events.
         _recompute_pain_summary(db, entry_id)
-    assert created is not None
-    return PainEvent(**created)
+    return PainEvent(**created, instance_ids=_pain_event_instance_ids(db, created["id"]))
 
 
 def delete_pain_event(db: Database, user_id: UUID, event_id: UUID) -> bool:
@@ -194,6 +219,7 @@ def delete_pain_event(db: Database, user_id: UUID, event_id: UUID) -> bool:
     if not row:
         return False
     with db.cursor():
+        db.execute("DELETE FROM pain_event_instances WHERE pain_event_id = ?", [event_id])
         db.execute("DELETE FROM pain_events WHERE id = ?", [event_id])
         _recompute_pain_summary(db, row["daily_entry_id"])
     return True

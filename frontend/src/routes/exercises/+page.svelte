@@ -4,6 +4,7 @@
   import LineChart from '$lib/components/LineChart.svelte';
   import { todayISO } from '$lib/time';
   import type { Exercise, ExerciseLog, SessionDetail } from '$lib/types';
+  import { activePainInstances } from '$lib/stores/painInstances.svelte';
 
   let exercises = $state<Exercise[]>([]);
   let date = $state(todayISO());
@@ -13,6 +14,13 @@
   let included = $state<Record<string, boolean>>({});
   let saved = $state<SessionDetail | null>(null);
   let message = $state('');
+  let sessionInstanceIds = $state<string[]>([]);
+
+  function toggleSessionInstance(id: string) {
+    sessionInstanceIds = sessionInstanceIds.includes(id)
+      ? sessionInstanceIds.filter((x) => x !== id)
+      : [...sessionInstanceIds, id];
+  }
 
   let newExercise = $state('');
 
@@ -42,6 +50,7 @@
     const last = await api.latestSession();
     if (last) {
       intensity = last.intensity;
+      sessionInstanceIds = last.instance_ids;
       for (const log of last.logs) {
         if (rows[log.exercise_id]) {
           rows[log.exercise_id] = { ...log, id: undefined };
@@ -60,7 +69,12 @@
 
   async function saveSession() {
     const logs = exercises.filter((e) => included[e.id]).map((e) => rows[e.id]);
-    saved = await api.createSession(date, { intensity, notes: sessionNotes || null, logs });
+    saved = await api.createSession(date, {
+      intensity,
+      notes: sessionNotes || null,
+      logs,
+      instance_ids: sessionInstanceIds
+    });
     message = `Saved session with ${saved.logs.length} exercises.`;
   }
 
@@ -180,6 +194,23 @@
     <label>Session notes</label>
     <input bind:value={sessionNotes} />
   </div>
+  {#if activePainInstances().length}
+    <div class="field" style="margin-top: 0.75rem">
+      <label>Tag pain instance(s) (optional)</label>
+      <div class="chips">
+        {#each activePainInstances() as pi (pi.id)}
+          <button
+            type="button"
+            class="chip"
+            class:on={sessionInstanceIds.includes(pi.id)}
+            onclick={() => toggleSessionInstance(pi.id)}
+          >
+            {pi.name}
+          </button>
+        {/each}
+      </div>
+    </div>
+  {/if}
   <button class="status-G" onclick={saveSession}>Save session</button>
   {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
 </div>
@@ -262,5 +293,23 @@
     color: var(--text-muted);
     padding: 0;
     font-size: 0.85rem;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-top: 0.4rem;
+  }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text-muted);
+    border-radius: 999px;
+    padding: 0.3rem 0.7rem;
+    font-size: 0.85rem;
+  }
+  .chip.on {
+    border-color: var(--accent);
+    color: var(--text);
   }
 </style>

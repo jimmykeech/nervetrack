@@ -5,8 +5,12 @@ from __future__ import annotations
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
+import pytest
+
 from app.models.entries import DailyEntryUpsert
+from app.models.pain_instances import PainInstanceCreate
 from app.services import entries as service
+from app.services import pain_instances as pain_instances_service
 
 
 def test_upsert_creates_then_updates(db, user_id):
@@ -156,3 +160,44 @@ def test_checkbox_restamp_not_overwritten_when_unchanged(db, user_id):
     # An unrelated field changes; iced stays true and its stamp is preserved.
     second = service.upsert_entry(db, user_id, d, DailyEntryUpsert(iced=True, status="A"))
     assert second.iced_at == first.iced_at
+
+
+def test_pain_event_tagged_with_instances(db, user_id):
+    d = date(2026, 6, 13)
+    instance = pain_instances_service.create_instance(
+        db, user_id, PainInstanceCreate(name="Left sciatic")
+    )
+    ev = service.add_pain_event(db, user_id, d, None, 4, "sitting", [instance.id])
+    assert ev.instance_ids == [instance.id]
+
+    entry = service.get_entry(db, user_id, d)
+    assert entry.pain_events[0].instance_ids == [instance.id]
+
+
+def test_pain_event_rejects_unowned_instance(db, user_id):
+    from uuid import uuid4
+
+    d = date(2026, 6, 13)
+    with pytest.raises(ValueError):
+        service.add_pain_event(db, user_id, d, None, 4, None, [uuid4()])
+
+
+def test_delete_tagged_pain_event_does_not_violate_fk(db, user_id):
+    d = date(2026, 6, 13)
+    instance = pain_instances_service.create_instance(
+        db, user_id, PainInstanceCreate(name="Left sciatic")
+    )
+    ev = service.add_pain_event(db, user_id, d, None, 4, None, [instance.id])
+    assert service.delete_pain_event(db, user_id, ev.id) is True
+
+
+def test_api_pain_event_tagging(auth_client):
+    created = auth_client.post("/api/v1/pain-instances", json={"name": "Left sciatic"})
+    iid = created.json()["id"]
+
+    ev = auth_client.post(
+        "/api/v1/entries/2026-06-13/pain-events",
+        json={"pain_level": 4, "instance_ids": [iid]},
+    )
+    assert ev.status_code == 201
+    assert ev.json()["instance_ids"] == [iid]
