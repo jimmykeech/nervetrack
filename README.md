@@ -150,7 +150,7 @@ Interactive docs at `http://localhost:8000/docs` when the backend is running.
 ### Key behaviours
 
 - **Auth**: every `/api/v1` data route requires a valid session cookie (returns 401
-  otherwise); only `/healthz`, `/ai/status`, and the auth endpoints are public. Data is
+  otherwise); only `/healthz` and the auth endpoints are public. Data is
   scoped per account — entries, notes, timers, sessions, weeks, and the exercise
   catalogue are all per-user, and a new account is seeded with its own catalogue on
   first login.
