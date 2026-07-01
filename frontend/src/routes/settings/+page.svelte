@@ -5,6 +5,7 @@
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { painInstances, loadPainInstances } from '$lib/stores/painInstances.svelte';
   import { onMount } from 'svelte';
+  import type { LlmSettings } from '$lib/types';
 
   let file = $state<File | null>(null);
 
@@ -12,9 +13,49 @@
   let newRegion = $state('');
   let newBackground = $state('');
 
-  onMount(() => {
+  let llm = $state<LlmSettings | null>(null);
+  let provider = $state('anthropic');
+  let model = $state('');
+  let apiKey = $state('');
+  let baseUrl = $state('');
+  let llmMsg = $state('');
+  let llmBusy = $state(false);
+
+  const providers = ['anthropic', 'openai', 'gemini', 'openrouter', 'ollama'];
+  const modelHint: Record<string, string> = {
+    anthropic: 'anthropic/claude-sonnet-5',
+    openai: 'openai/gpt-4.1',
+    gemini: 'gemini/gemini-2.5-pro',
+    openrouter: 'openrouter/anthropic/claude-sonnet-5',
+    ollama: 'ollama/llama3.1'
+  };
+
+  onMount(async () => {
     if (!painInstances.loaded) loadPainInstances();
+    llm = await api.getLlmSettings();
+    if (llm.provider) provider = llm.provider;
+    model = llm.model ?? '';
+    baseUrl = llm.base_url ?? '';
   });
+
+  async function saveLlm() {
+    llmBusy = true;
+    llmMsg = '';
+    try {
+      llm = await api.saveLlmSettings({
+        provider,
+        model: model.trim(),
+        api_key: apiKey === '' ? null : apiKey, // blank = keep existing
+        base_url: baseUrl.trim() || null
+      });
+      apiKey = '';
+      llmMsg = 'Saved ✓';
+    } catch (e) {
+      llmMsg = (e as Error).message;
+    } finally {
+      llmBusy = false;
+    }
+  }
 
   async function addInstance() {
     if (!newName.trim()) return;
@@ -111,6 +152,57 @@
 </div>
 
 <div class="card">
+  <h2 style="margin-top: 0">AI model</h2>
+  <p class="muted small" style="margin-bottom: 0.75rem">
+    Configure a provider and model to enable chat and AI weekly drafts. Your API key is encrypted
+    and never leaves this server. For full privacy, run a local model with Ollama — nothing is sent
+    externally.
+  </p>
+
+  <div class="field">
+    <label class="small muted" for="prov">Provider</label>
+    <select id="prov" bind:value={provider}>
+      {#each providers as p}<option value={p}>{p}</option>{/each}
+    </select>
+  </div>
+
+  <div class="field">
+    <label class="small muted" for="model">Model</label>
+    <input id="model" bind:value={model} placeholder={modelHint[provider]} />
+  </div>
+
+  <div class="field">
+    <label class="small muted" for="key">
+      API key {#if llm?.api_key_set}<span>— configured ✓ (leave blank to keep)</span>{/if}
+    </label>
+    <input
+      id="key"
+      type="password"
+      bind:value={apiKey}
+      placeholder={llm?.api_key_set ? '••••••••' : 'Not set'}
+    />
+  </div>
+
+  {#if provider === 'ollama' || provider === 'openrouter'}
+    <div class="field">
+      <label class="small muted" for="base">Base URL</label>
+      <input
+        id="base"
+        bind:value={baseUrl}
+        placeholder={provider === 'ollama'
+          ? 'http://localhost:11434'
+          : 'https://openrouter.ai/api/v1'}
+      />
+    </div>
+  {/if}
+
+  <div class="row" style="margin-top: 0.75rem; gap: 0.6rem; align-items: center">
+    <button onclick={saveLlm} disabled={llmBusy || !model.trim()}>Save AI settings</button>
+    {#if llmMsg}<span class="small muted">{llmMsg}</span>{/if}
+  </div>
+</div>
+
+<div class="card">
   <h2 style="margin-top: 0">Import spreadsheet</h2>
   <p class="muted small">
     Upload the existing “Piriformis Recovery Tracker” workbook (.xlsx). The Daily Tracker, Exercise
@@ -130,8 +222,9 @@
 <div class="card">
   <h3 style="margin-top: 0">About</h3>
   <p class="muted small">
-    NerveTrack — Phase 1. Timestamps stored in UTC; dates shown in your local timezone. AI insights
-    (weekly summary drafting, free-form Q&amp;A) are planned for Phase 2.
+    NerveTrack. Timestamps stored in UTC; dates shown in your local timezone. AI insights (weekly
+    summary drafting, free-form Q&amp;A over your data) are available — configure a model above,
+    then use the Chat page and the Weekly “Draft with AI” button.
   </p>
 </div>
 
