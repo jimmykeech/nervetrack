@@ -34,14 +34,19 @@ def _completion_kwargs(config: ResolvedLlmConfig) -> dict[str, Any]:
     return kwargs
 
 
+def _system(extra_context: str) -> str:
+    return f"{SYSTEM_PROMPT}\n\n{extra_context}" if extra_context else SYSTEM_PROMPT
+
+
 async def stream_chat(
     config: ResolvedLlmConfig,
     history: list[dict],
     run_tool: Callable[[str, dict], Any],
     max_iters: int = 8,
+    extra_context: str = "",
 ) -> AsyncIterator[dict]:
     """Run the tool loop, streaming assistant tokens. Yields token/tool/final events."""
-    messages: list[dict] = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+    messages: list[dict] = [{"role": "system", "content": _system(extra_context)}, *history]
 
     for _ in range(max_iters):
         stream = await litellm.acompletion(
@@ -96,7 +101,9 @@ async def stream_chat(
     yield {"type": "final", "content": final.choices[0].message.content or ""}
 
 
-async def draft_weekly(config: ResolvedLlmConfig, bundle: dict) -> WeeklyDraftResponse:
+async def draft_weekly(
+    config: ResolvedLlmConfig, bundle: dict, extra_context: str = ""
+) -> WeeklyDraftResponse:
     prompt = (
         "Draft this week's review from the JSON data below. Respond with ONLY a JSON "
         'object: {"key_observations": <retrospective narrative of what happened, in '
@@ -105,7 +112,7 @@ async def draft_weekly(config: ResolvedLlmConfig, bundle: dict) -> WeeklyDraftRe
         + json.dumps(bundle, default=str)
     )
     resp = await litellm.acompletion(
-        messages=[{"role": "system", "content": SYSTEM_PROMPT},
+        messages=[{"role": "system", "content": _system(extra_context)},
                   {"role": "user", "content": prompt}],
         **_completion_kwargs(config),
     )

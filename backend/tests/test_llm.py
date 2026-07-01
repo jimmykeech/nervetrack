@@ -76,6 +76,24 @@ async def test_max_iters_guard(monkeypatch, cfg):
     assert events[-1]["type"] == "final"
 
 
+async def test_extra_context_reaches_system_prompt(monkeypatch, cfg):
+    captured = {}
+
+    async def fake_acompletion(**kwargs):
+        captured["messages"] = kwargs["messages"]
+        return _aiter([_chunk(content="ok")])
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+    async for _ in llm.stream_chat(
+        cfg, [{"role": "user", "content": "hi"}], lambda n, a: None,
+        extra_context="PATIENT BACKGROUND:\n- Sex: male",
+    ):
+        pass
+    system = captured["messages"][0]
+    assert system["role"] == "system"
+    assert "PATIENT BACKGROUND" in system["content"]
+
+
 async def test_draft_weekly_parses_json(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         msg = types.SimpleNamespace(
