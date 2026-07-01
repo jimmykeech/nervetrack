@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import { RecordsStore } from '$lib/stores/records.svelte';
+  import type { PatientProfile } from '$lib/types';
 
   const records = new RecordsStore();
   let expanded = $state<string | null>(null);
@@ -10,11 +11,25 @@
 
   onMount(() => records.load());
 
+  function normalizeProfile(profile: PatientProfile): PatientProfile {
+    // Cleared inputs (e.g. date-of-birth) surface as "" but the backend expects
+    // null for an absent value, so coerce empty strings before sending.
+    const entries = Object.entries(profile).map(([key, value]) => [
+      key,
+      value === '' ? null : value
+    ]);
+    return Object.fromEntries(entries) as PatientProfile;
+  }
+
   async function saveProfile(e: Event) {
     e.preventDefault();
     if (!records.profile) return;
-    await records.saveProfile(records.profile);
-    profileMsg = 'Saved ✓';
+    try {
+      await records.saveProfile(normalizeProfile(records.profile));
+      profileMsg = 'Saved ✓';
+    } catch {
+      profileMsg = 'Save failed';
+    }
   }
 
   async function toggle(id: string) {

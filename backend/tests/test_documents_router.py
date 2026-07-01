@@ -1,4 +1,5 @@
 from app.models.pain_instances import PainInstanceCreate
+from app.services import documents as docs
 from app.services import pain_instances as pi
 
 
@@ -28,6 +29,28 @@ def test_upload_list_download_delete(auth_client):
 def test_upload_bad_mime_rejected(auth_client):
     r = _upload(auth_client, file=("m.exe", b"MZ", "application/x-msdownload"))
     assert r.status_code == 400
+
+
+def test_upload_oversize_rejected_before_persisting(auth_client, db, user_id):
+    oversized = b"x" * (docs.MAX_BYTES + 1)
+    r = _upload(auth_client, file=("big.pdf", oversized, "application/pdf"))
+    assert r.status_code == 400
+    assert r.json()["detail"] == "file too large"
+    assert docs.list_documents(db, user_id) == []
+
+
+def test_download_filename_header_is_sanitized(auth_client):
+    r = _upload(auth_client, file=('evil".pdf\r\nX-Injected: 1', b"data", "application/pdf"))
+    assert r.status_code == 201
+    doc_id = r.json()["id"]
+
+    dl = auth_client.get(f"/api/v1/documents/{doc_id}/download")
+    assert dl.status_code == 200
+    disposition = dl.headers["content-disposition"]
+    assert "\r" not in disposition and "\n" not in disposition
+    assert "X-Injected" not in dl.headers
+    # exactly two quote characters bracket the filename value
+    assert disposition.count('"') == 2
 
 
 def test_condition_detail_aggregate(auth_client, db, user_id):

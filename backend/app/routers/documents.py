@@ -11,8 +11,15 @@ from app.auth import current_user
 from app.deps import db_dep
 from app.models.records import DocumentMeta, DocumentPatch
 from app.services import documents as service
+from app.services.documents import MAX_BYTES
 
 router = APIRouter(tags=["documents"])
+
+
+def _safe_filename(filename: str | None) -> str:
+    """Strip CR/LF/quotes so the value is safe to embed in a header."""
+    name = (filename or "").replace("\r", "").replace("\n", "").replace('"', "")
+    return name or "document"
 
 
 @router.post("/documents", response_model=DocumentMeta, status_code=201)
@@ -25,6 +32,11 @@ async def upload_document(
     db=Depends(db_dep),
     user_id: UUID = Depends(current_user),
 ):
+    # Reject obviously-oversized uploads before buffering the whole body in memory.
+    # `file.size` comes from the client-supplied content-length and may be absent,
+    # so the service-level check below remains the authoritative defense.
+    if file.size is not None and file.size > MAX_BYTES:
+        raise HTTPException(400, "file too large")
     content = await file.read()
     try:
         return service.create_document(
@@ -59,7 +71,7 @@ def download_document(
     if blob is None:
         raise HTTPException(404, "No such document")
     content, mime, filename = blob
-    headers = {"Content-Disposition": f'inline; filename="{filename or "document"}"'}
+    headers = {"Content-Disposition": f'inline; filename="{_safe_filename(filename)}"'}
     return Response(content=content, media_type=mime or "application/octet-stream", headers=headers)
 
 
