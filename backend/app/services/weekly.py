@@ -95,6 +95,7 @@ def get_week(db: Database, user_id: UUID, week_start: date) -> WeeklySummary:
         overall_status=(saved or {}).get("overall_status"),
         key_observations=(saved or {}).get("key_observations"),
         trend_vs_last_week=(saved or {}).get("trend_vs_last_week"),
+        next_steps=(saved or {}).get("next_steps"),
     )
     return WeeklySummary(
         week_start=week_start,
@@ -114,8 +115,8 @@ def save_week(
             INSERT INTO weekly_summaries
                 (user_id, week_start, strengthening_sessions, avg_pain_episodes_per_day,
                  avg_tingling_level, worst_pain, overall_status, key_observations,
-                 trend_vs_last_week)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 trend_vs_last_week, next_steps)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT (user_id, week_start) DO UPDATE SET
                 strengthening_sessions = excluded.strengthening_sessions,
                 avg_pain_episodes_per_day = excluded.avg_pain_episodes_per_day,
@@ -123,7 +124,8 @@ def save_week(
                 worst_pain = excluded.worst_pain,
                 overall_status = excluded.overall_status,
                 key_observations = excluded.key_observations,
-                trend_vs_last_week = excluded.trend_vs_last_week
+                trend_vs_last_week = excluded.trend_vs_last_week,
+                next_steps = excluded.next_steps
             """,
             [
                 user_id,
@@ -135,6 +137,7 @@ def save_week(
                 fields.overall_status,
                 fields.key_observations,
                 fields.trend_vs_last_week,
+                fields.next_steps,
             ],
         )
     return get_week(db, user_id, week_start)
