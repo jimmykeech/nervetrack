@@ -12,6 +12,7 @@ from uuid import UUID
 
 from app.db import Database
 from app.models.sessions import ExerciseLog, ExerciseLogIn, SessionDetail, SessionIn
+from app.services import pain_instances as pain_instances_service
 from app.services.timeutil import now_utc
 
 
@@ -29,8 +30,27 @@ def _load_logs(db: Database, session_id: UUID) -> list[ExerciseLog]:
     return [ExerciseLog(**r) for r in rows]
 
 
+def _tag_session(db: Database, session_id: UUID, instance_ids: list) -> None:
+    for iid in dict.fromkeys(instance_ids):
+        db.execute(
+            "INSERT INTO session_instances (session_id, instance_id) VALUES (?, ?)",
+            [session_id, iid],
+        )
+
+
+def _load_instance_ids(db: Database, session_id: UUID) -> list:
+    rows = db.query(
+        "SELECT instance_id FROM session_instances WHERE session_id = ?", [session_id]
+    )
+    return [r["instance_id"] for r in rows]
+
+
 def _hydrate(db: Database, session_row: dict) -> SessionDetail:
-    return SessionDetail(**session_row, logs=_load_logs(db, session_row["id"]))
+    return SessionDetail(
+        **session_row,
+        logs=_load_logs(db, session_row["id"]),
+        instance_ids=_load_instance_ids(db, session_row["id"]),
+    )
 
 
 def _owned_session(db: Database, user_id: UUID, session_id: UUID) -> dict | None:
@@ -97,6 +117,7 @@ def create_session(
 ) -> SessionDetail:
     with db.cursor():
         _validate_exercises(db, user_id, data.logs)
+        pain_instances_service.validate_instances(db, user_id, data.instance_ids)
         row = db.query_one(
             """
             INSERT INTO strength_sessions (daily_entry_id, performed_at, intensity, notes)
@@ -107,6 +128,7 @@ def create_session(
         )
         assert row is not None
         _insert_logs(db, row["id"], data.logs)
+        _tag_session(db, row["id"], data.instance_ids)
         # Mirror onto the daily entry so the Today view reflects the session.
         db.execute(
             "UPDATE daily_entries SET strengthening_done = TRUE, session_intensity = ?, "
@@ -124,12 +146,15 @@ def update_session(
         return None
     with db.cursor():
         _validate_exercises(db, user_id, data.logs)
+        pain_instances_service.validate_instances(db, user_id, data.instance_ids)
         db.execute(
             "UPDATE strength_sessions SET performed_at = ?, intensity = ?, notes = ? WHERE id = ?",
             [data.performed_at or existing["performed_at"], data.intensity, data.notes, session_id],
         )
         db.execute("DELETE FROM exercise_logs WHERE session_id = ?", [session_id])
         _insert_logs(db, session_id, data.logs)
+        db.execute("DELETE FROM session_instances WHERE session_id = ?", [session_id])
+        _tag_session(db, session_id, data.instance_ids)
         db.execute(
             "UPDATE daily_entries SET session_intensity = ?, updated_at = ? WHERE id = ?",
             [data.intensity, now_utc(), existing["daily_entry_id"]],

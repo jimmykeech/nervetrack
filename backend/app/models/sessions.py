@@ -31,6 +31,7 @@ class SessionIn(BaseModel):
     intensity: Decimal | None = Field(default=None, ge=1, le=10)
     notes: str | None = None
     logs: list[ExerciseLogIn] = Field(default_factory=list)
+    instance_ids: list[UUID] = Field(default_factory=list)
 
 
 class SessionDetail(BaseModel):
@@ -40,3 +41,4 @@ class SessionDetail(BaseModel):
     intensity: Decimal | None = None
     notes: str | None = None
     logs: list[ExerciseLog] = Field(default_factory=list)
+    instance_ids: list[UUID] = Field(default_factory=list)
