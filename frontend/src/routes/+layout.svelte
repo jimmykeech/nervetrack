@@ -19,6 +19,7 @@
     { href: '/history', label: 'History' },
     { href: '/exercises', label: 'Exercises' },
     { href: '/weekly', label: 'Weekly' },
+    { href: '/chat', label: 'Chat' },
     { href: '/settings', label: 'Settings' }
   ];
 
