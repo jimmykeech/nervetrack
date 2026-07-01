@@ -21,7 +21,7 @@ from app.models.ai import (
     LlmSettingsOut,
     WeeklyDraftResponse,
 )
-from app.services import ai_tools, conversations, llm, llm_settings
+from app.services import ai_tools, conversations, llm, llm_settings, records_context
 from app.services import weekly as weekly_service
 
 router = APIRouter(tags=["ai"])
@@ -92,7 +92,9 @@ async def send_message(
 
     async def event_stream():
         final_content = ""
-        async for event in llm.stream_chat(config, history, run_tool):
+        async for event in llm.stream_chat(
+            config, history, run_tool, extra_context=records_context.build(db, user_id)
+        ):
             if event["type"] == "final":
                 final_content = event["content"]
             yield f"data: {json.dumps(event)}\n\n"
@@ -113,4 +115,4 @@ async def weekly_draft(
     if config is None:
         raise HTTPException(409, "llm_not_configured")
     bundle = weekly_service.get_week_bundle(db, user_id, week_start)
-    return await llm.draft_weekly(config, bundle)
+    return await llm.draft_weekly(config, bundle, extra_context=records_context.build(db, user_id))

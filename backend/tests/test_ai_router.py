@@ -33,12 +33,18 @@ def test_chat_requires_config(auth_client):
     assert r.json()["detail"] == "llm_not_configured"
 
 
-def test_chat_streams_and_persists(auth_client, monkeypatch):
+def test_chat_streams_and_persists(auth_client, monkeypatch, db, user_id):
     auth_client.put("/api/v1/ai/settings", json={
         "provider": "anthropic", "model": "anthropic/claude-sonnet-5", "api_key": "k",
     })
+    from app.models.pain_instances import PainInstanceCreate
+    from app.services import pain_instances as pi
+    pi.create_instance(db, user_id, PainInstanceCreate(name="Left sciatic"))
 
-    async def fake_stream(config, history, run_tool, max_iters=8):
+    captured = {}
+
+    async def fake_stream(config, history, run_tool, max_iters=8, extra_context=""):
+        captured["extra_context"] = extra_context
         yield {"type": "token", "text": "Hi "}
         yield {"type": "token", "text": "there"}
         yield {"type": "final", "content": "Hi there"}
@@ -51,6 +57,7 @@ def test_chat_streams_and_persists(auth_client, monkeypatch):
         assert r.status_code == 200
         text = "".join(r.iter_text())
     assert "Hi there" in text
+    assert "Left sciatic" in captured["extra_context"]
 
     detail = auth_client.get(f"/api/v1/ai/conversations/{conv['id']}").json()
     roles = [(m["role"], m["content"]) for m in detail["messages"]]
@@ -65,7 +72,7 @@ def test_weekly_draft(auth_client, monkeypatch, db, user_id):
     auth_client.put("/api/v1/ai/settings", json={
         "provider": "anthropic", "model": "m", "api_key": "k"})
 
-    async def fake_draft(config, bundle):
+    async def fake_draft(config, bundle, extra_context=""):
         from app.models.ai import WeeklyDraftResponse
         return WeeklyDraftResponse(key_observations="obs", next_steps="plan")
 
