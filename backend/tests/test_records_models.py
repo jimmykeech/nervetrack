@@ -10,7 +10,8 @@ def test_profile_all_optional():
 
 def test_profile_accepts_decimal():
     p = PatientProfile(height_cm=Decimal("178.0"), weight_kg=Decimal("74.5"))
-    assert p.height_cm == Decimal("178.0")
+    assert p.height_cm == 178.0
+    assert isinstance(p.height_cm, float)
 
 
 def test_document_meta_has_no_content_field():

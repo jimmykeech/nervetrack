@@ -15,6 +15,8 @@ def test_profile_upsert_round_trip(auth_client):
     assert got["sex"] == "male"
     assert got["lifestyle"].startswith("desk job")
     assert got["medical_history"] == "appendectomy 2010"
+    assert isinstance(got["height_cm"], (int, float))
+    assert got["height_cm"] == 178.0
 
 
 def test_profile_second_put_overwrites(auth_client):

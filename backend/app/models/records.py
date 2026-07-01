@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from decimal import Decimal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -14,8 +13,8 @@ from app.models.pain_instances import PainInstance
 class PatientProfile(BaseModel):
     dob: date | None = None
     sex: str | None = None
-    height_cm: Decimal | None = None
-    weight_kg: Decimal | None = None
+    height_cm: float | None = None
+    weight_kg: float | None = None
     lifestyle: str | None = None
     medical_history: str | None = None
 
