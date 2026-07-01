@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
+from uuid import uuid4
 
 import pytest
+
+from app.models.pain_instances import PainInstanceCreate, PainInstancePatch
+from app.services import pain_instances as service
 
 
 def test_schema_creates_tables_with_fk_enforcement(db, user_id):
@@ -47,12 +51,6 @@ def test_name_unique_per_user(db, user_id):
         db.execute(
             "INSERT INTO pain_instances (user_id, name) VALUES (?, ?)", [user_id, "Left sciatic"]
         )
-
-
-from uuid import uuid4
-
-from app.models.pain_instances import PainInstanceCreate, PainInstancePatch
-from app.services import pain_instances as service
 
 
 def test_create_and_list_instances(db, user_id):

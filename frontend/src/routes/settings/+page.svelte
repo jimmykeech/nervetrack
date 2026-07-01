@@ -100,11 +100,7 @@
   </ul>
   <div class="row" style="margin-top: 0.75rem; flex-wrap: wrap; gap: 0.5rem">
     <input bind:value={newName} placeholder="Name, e.g. Left sciatic" style="flex: 1 1 10rem" />
-    <input
-      bind:value={newRegion}
-      placeholder="Body region (optional)"
-      style="flex: 1 1 8rem"
-    />
+    <input bind:value={newRegion} placeholder="Body region (optional)" style="flex: 1 1 8rem" />
     <button onclick={addInstance}>Add</button>
   </div>
   <textarea
