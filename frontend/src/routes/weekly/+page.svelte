@@ -8,6 +8,8 @@
   let editStatus = $state<Status | null>(null);
   let editObs = $state('');
   let editTrend = $state('');
+  let editNext = $state('');
+  let drafting = $state(false);
   let message = $state('');
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
@@ -24,6 +26,7 @@
     editStatus = w.overall_status ?? w.computed.suggested_status ?? null;
     editObs = w.key_observations ?? '';
     editTrend = w.trend_vs_last_week ?? '';
+    editNext = w.next_steps ?? '';
     message = '';
   }
 
@@ -32,11 +35,30 @@
     const updated = await api.saveWeek(selected.week_start, {
       overall_status: editStatus ?? undefined,
       key_observations: editObs || undefined,
-      trend_vs_last_week: editTrend || undefined
+      trend_vs_last_week: editTrend || undefined,
+      next_steps: editNext || undefined
     });
     message = 'Saved ✓';
     weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
     selected = updated;
+  }
+
+  async function draftWithAi() {
+    if (!selected) return;
+    drafting = true;
+    message = '';
+    try {
+      const d = await api.weeklyDraft(selected.week_start);
+      editObs = d.key_observations;
+      editNext = d.next_steps;
+      message = 'Draft ready — review and Save.';
+    } catch (e) {
+      message = (e as Error).message.startsWith('409')
+        ? 'Configure a model in Settings first.'
+        : (e as Error).message;
+    } finally {
+      drafting = false;
+    }
   }
 </script>
 
@@ -119,8 +141,17 @@
       </select>
     </div>
     <div class="field">
+      <button class="draft" onclick={draftWithAi} disabled={drafting}>
+        {drafting ? 'Drafting…' : '✨ Draft with AI'}
+      </button>
+    </div>
+    <div class="field">
       <label>Key observations</label>
       <textarea bind:value={editObs} rows="6" placeholder="What stood out this week…"></textarea>
+    </div>
+    <div class="field">
+      <label>Next steps</label>
+      <textarea bind:value={editNext} rows="4" placeholder="Plan for the upcoming week…"></textarea>
     </div>
     <button class="status-G" onclick={save}>Save</button>
     {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
