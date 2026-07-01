@@ -2,16 +2,21 @@
 // which Vite (dev) or the Node adapter origin (prod) proxies to the backend.
 
 import type {
+  ConversationDetail,
+  ConversationSummary,
   DailyEntry,
   DailyEntrySummary,
   DailyStatPoint,
   DayTimer,
   Exercise,
   Interval,
+  LlmSettings,
+  LlmSettingsIn,
   Note,
   PainInstance,
   Posture,
   SessionDetail,
+  WeeklyDraft,
   WeeklySummary
 } from './types';
 
@@ -150,8 +155,24 @@ export const api = {
   getWeek: (weekStart: string) => request<WeeklySummary>(`/weeks/${weekStart}`),
   saveWeek: (
     weekStart: string,
-    data: { overall_status?: string; key_observations?: string; trend_vs_last_week?: string }
+    data: {
+      overall_status?: string;
+      key_observations?: string;
+      trend_vs_last_week?: string;
+      next_steps?: string;
+    }
   ) => request<WeeklySummary>(`/weeks/${weekStart}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // AI
+  getLlmSettings: () => request<LlmSettings>('/ai/settings'),
+  saveLlmSettings: (data: LlmSettingsIn) =>
+    request<LlmSettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  listConversations: () => request<ConversationSummary[]>('/ai/conversations'),
+  createConversation: () => request<ConversationSummary>('/ai/conversations', { method: 'POST' }),
+  getConversation: (id: string) => request<ConversationDetail>(`/ai/conversations/${id}`),
+  deleteConversation: (id: string) => request(`/ai/conversations/${id}`, { method: 'DELETE' }),
+  weeklyDraft: (weekStart: string) =>
+    request<WeeklyDraft>(`/ai/weekly-draft/${weekStart}`, { method: 'POST' }),
 
   // Import
   importXlsx: async (file: File) => {

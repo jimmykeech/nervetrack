@@ -141,7 +141,46 @@ export interface WeeklySummary {
   overall_status: Status | null;
   key_observations: string | null;
   trend_vs_last_week: string | null;
+  next_steps: string | null;
   computed: WeeklyComputed;
+}
+
+export interface LlmSettings {
+  provider: string | null;
+  model: string | null;
+  base_url: string | null;
+  api_key_set: boolean;
+  configured: boolean;
+}
+
+export interface LlmSettingsIn {
+  provider: string;
+  model: string;
+  api_key?: string | null;
+  base_url?: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: string;
+  content: string | null;
+  created_at: string;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: ChatMessage[];
+}
+
+export interface WeeklyDraft {
+  key_observations: string;
+  next_steps: string;
 }
 
 export interface DailyStatPoint {
