@@ -15,6 +15,7 @@ class PainEventIn(BaseModel):
     occurred_at: datetime | None = None
     pain_level: Decimal | None = Field(default=None, ge=0, le=10)
     context: str | None = None
+    instance_ids: list[UUID] = Field(default_factory=list)
 
 
 class PainEvent(BaseModel):
@@ -23,6 +24,7 @@ class PainEvent(BaseModel):
     occurred_at: datetime
     pain_level: Decimal | None = None
     context: str | None = None
+    instance_ids: list[UUID] = Field(default_factory=list)
 
 
 class DailyEntryUpsert(BaseModel):

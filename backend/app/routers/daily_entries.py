@@ -57,9 +57,18 @@ def add_pain_event(
     db=Depends(db_dep),
     user_id: UUID = Depends(current_user),
 ):
-    return service.add_pain_event(
-        db, user_id, entry_date, data.occurred_at, data.pain_level, data.context
-    )
+    try:
+        return service.add_pain_event(
+            db,
+            user_id,
+            entry_date,
+            data.occurred_at,
+            data.pain_level,
+            data.context,
+            data.instance_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.delete("/pain-events/{event_id}", status_code=204)
