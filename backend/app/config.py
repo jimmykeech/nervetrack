@@ -43,8 +43,10 @@ class Settings(BaseSettings):
     # an instance after the intended accounts exist.
     allow_registration: bool = True
 
-    # Phase 2 placeholder — unused in Phase 1.
-    anthropic_api_key: str = ""
+    # Secret used to derive the Fernet key that encrypts per-user LLM API keys
+    # at rest. Any non-empty string works; keep it stable or stored keys become
+    # undecryptable. Required before storing an API key.
+    secret_key: str = ""
 
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
