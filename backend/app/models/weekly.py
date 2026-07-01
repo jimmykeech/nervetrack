@@ -28,6 +28,7 @@ class WeeklyUserFields(BaseModel):
     trend_vs_last_week: str | None = Field(
         default=None, pattern="^(Better|Same|Slightly Worse|Worse)$"
     )
+    next_steps: str | None = None
 
 
 class WeeklySummary(WeeklyUserFields):

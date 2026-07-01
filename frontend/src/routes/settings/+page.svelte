@@ -3,35 +3,52 @@
   import { auth, signOut } from '$lib/stores/auth.svelte';
   import { goto } from '$app/navigation';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-  import { painInstances, loadPainInstances } from '$lib/stores/painInstances.svelte';
   import { onMount } from 'svelte';
+  import type { LlmSettings } from '$lib/types';
 
   let file = $state<File | null>(null);
 
-  let newName = $state('');
-  let newRegion = $state('');
-  let newBackground = $state('');
+  let llm = $state<LlmSettings | null>(null);
+  let provider = $state('anthropic');
+  let model = $state('');
+  let apiKey = $state('');
+  let baseUrl = $state('');
+  let llmMsg = $state('');
+  let llmBusy = $state(false);
 
-  onMount(() => {
-    if (!painInstances.loaded) loadPainInstances();
+  const providers = ['anthropic', 'openai', 'gemini', 'openrouter', 'ollama'];
+  const modelHint: Record<string, string> = {
+    anthropic: 'anthropic/claude-sonnet-5',
+    openai: 'openai/gpt-4.1',
+    gemini: 'gemini/gemini-2.5-pro',
+    openrouter: 'openrouter/anthropic/claude-sonnet-5',
+    ollama: 'ollama/llama3.1'
+  };
+
+  onMount(async () => {
+    llm = await api.getLlmSettings();
+    if (llm.provider) provider = llm.provider;
+    model = llm.model ?? '';
+    baseUrl = llm.base_url ?? '';
   });
 
-  async function addInstance() {
-    if (!newName.trim()) return;
-    await api.createPainInstance({
-      name: newName.trim(),
-      body_region: newRegion.trim() || undefined,
-      background: newBackground.trim() || undefined
-    });
-    newName = '';
-    newRegion = '';
-    newBackground = '';
-    await loadPainInstances();
-  }
-
-  async function toggleActive(id: string, active: boolean) {
-    await api.patchPainInstance(id, { active: !active });
-    await loadPainInstances();
+  async function saveLlm() {
+    llmBusy = true;
+    llmMsg = '';
+    try {
+      llm = await api.saveLlmSettings({
+        provider,
+        model: model.trim(),
+        api_key: apiKey === '' ? null : apiKey, // blank = keep existing
+        base_url: baseUrl.trim() || null
+      });
+      apiKey = '';
+      llmMsg = 'Saved ✓';
+    } catch (e) {
+      llmMsg = (e as Error).message;
+    } finally {
+      llmBusy = false;
+    }
   }
 
   async function handleLogout() {
@@ -79,35 +96,62 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top: 0">Pain instances</h2>
+  <h2 style="margin-top: 0">Conditions & records</h2>
   <p class="muted small">
-    The nerve pain issues you're tracking. Tag pain jabs and strengthening sessions with these on
-    the Today and Exercises pages.
+    Manage your conditions, patient background, and documents on the
+    <a href="/records">Records</a> page.
   </p>
-  <ul class="cat">
-    {#each painInstances.list as pi (pi.id)}
-      <li>
-        <span
-          >{pi.name}{pi.body_region ? ` · ${pi.body_region}` : ''}{!pi.active
-            ? ' (inactive)'
-            : ''}</span
-        >
-        <button class="link" onclick={() => toggleActive(pi.id, pi.active)}
-          >{pi.active ? 'retire' : 'reactivate'}</button
-        >
-      </li>
-    {/each}
-  </ul>
-  <div class="row" style="margin-top: 0.75rem; flex-wrap: wrap; gap: 0.5rem">
-    <input bind:value={newName} placeholder="Name, e.g. Left sciatic" style="flex: 1 1 10rem" />
-    <input bind:value={newRegion} placeholder="Body region (optional)" style="flex: 1 1 8rem" />
-    <button onclick={addInstance}>Add</button>
+</div>
+
+<div class="card">
+  <h2 style="margin-top: 0">AI model</h2>
+  <p class="muted small" style="margin-bottom: 0.75rem">
+    Configure a provider and model to enable chat and AI weekly drafts. Your API key is encrypted
+    and never leaves this server. For full privacy, run a local model with Ollama — nothing is sent
+    externally.
+  </p>
+
+  <div class="field">
+    <label class="small muted" for="prov">Provider</label>
+    <select id="prov" bind:value={provider}>
+      {#each providers as p}<option value={p}>{p}</option>{/each}
+    </select>
   </div>
-  <textarea
-    bind:value={newBackground}
-    placeholder="Background (optional)"
-    style="margin-top: 0.5rem; width: 100%"
-  ></textarea>
+
+  <div class="field">
+    <label class="small muted" for="model">Model</label>
+    <input id="model" bind:value={model} placeholder={modelHint[provider]} />
+  </div>
+
+  <div class="field">
+    <label class="small muted" for="key">
+      API key {#if llm?.api_key_set}<span>— configured ✓ (leave blank to keep)</span>{/if}
+    </label>
+    <input
+      id="key"
+      type="password"
+      bind:value={apiKey}
+      placeholder={llm?.api_key_set ? '••••••••' : 'Not set'}
+    />
+  </div>
+
+  {#if provider === 'ollama' || provider === 'openrouter'}
+    <div class="field">
+      <label class="small muted" for="base">Base URL</label>
+      <input
+        id="base"
+        bind:value={baseUrl}
+        placeholder={provider === 'ollama'
+          ? 'http://localhost:11434'
+          : 'https://openrouter.ai/api/v1'}
+      />
+    </div>
+  {/if}
+
+  <div class="row" style="margin-top: 0.75rem; gap: 0.6rem; align-items: center">
+    <button onclick={saveLlm} disabled={llmBusy || !model.trim()}>Save AI settings</button>
+    {#if llmMsg}<span class="small muted">{llmMsg}</span>{/if}
+  </div>
 </div>
 
 <div class="card">
@@ -130,28 +174,8 @@
 <div class="card">
   <h3 style="margin-top: 0">About</h3>
   <p class="muted small">
-    NerveTrack — Phase 1. Timestamps stored in UTC; dates shown in your local timezone. AI insights
-    (weekly summary drafting, free-form Q&amp;A) are planned for Phase 2.
+    NerveTrack. Timestamps stored in UTC; dates shown in your local timezone. AI insights (weekly
+    summary drafting, free-form Q&amp;A over your data) are available — configure a model above,
+    then use the Chat page and the Weekly “Draft with AI” button.
   </p>
 </div>
-
-<style>
-  .cat {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  .cat li {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .link {
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    padding: 0;
-    font-size: 0.85rem;
-  }
-</style>

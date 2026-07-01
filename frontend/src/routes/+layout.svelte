@@ -18,7 +18,9 @@
     { href: '/timer', label: 'Timer' },
     { href: '/history', label: 'History' },
     { href: '/exercises', label: 'Exercises' },
+    { href: '/records', label: 'Records' },
     { href: '/weekly', label: 'Weekly' },
+    { href: '/chat', label: 'Chat' },
     { href: '/settings', label: 'Settings' }
   ];
 

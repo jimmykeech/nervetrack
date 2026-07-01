@@ -27,7 +27,9 @@ services:
       NERVETRACK_ALLOWED_EMAILS: ${ALLOWED_EMAILS:-}
       NERVETRACK_SESSION_TTL_DAYS: ${SESSION_TTL_DAYS:-30}
       NERVETRACK_COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Phase 2 AI: encrypts per-user LLM API keys at rest. Required before a
+      # user can store a provider key (per-user keys are set in the app UI).
+      NERVETRACK_SECRET_KEY: ${NERVETRACK_SECRET_KEY:-}
     volumes:
       - nervetrack-data:/data
     ports:

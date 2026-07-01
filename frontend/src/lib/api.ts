@@ -2,16 +2,25 @@
 // which Vite (dev) or the Node adapter origin (prod) proxies to the backend.
 
 import type {
+  ConditionDetail,
+  ConditionNote,
+  ConversationDetail,
+  ConversationSummary,
   DailyEntry,
   DailyEntrySummary,
   DailyStatPoint,
   DayTimer,
+  DocumentMeta,
   Exercise,
   Interval,
+  LlmSettings,
+  LlmSettingsIn,
   Note,
   PainInstance,
+  PatientProfile,
   Posture,
   SessionDetail,
+  WeeklyDraft,
   WeeklySummary
 } from './types';
 
@@ -150,8 +159,61 @@ export const api = {
   getWeek: (weekStart: string) => request<WeeklySummary>(`/weeks/${weekStart}`),
   saveWeek: (
     weekStart: string,
-    data: { overall_status?: string; key_observations?: string; trend_vs_last_week?: string }
+    data: {
+      overall_status?: string;
+      key_observations?: string;
+      trend_vs_last_week?: string;
+      next_steps?: string;
+    }
   ) => request<WeeklySummary>(`/weeks/${weekStart}`, { method: 'PUT', body: JSON.stringify(data) }),
+
+  // AI
+  getLlmSettings: () => request<LlmSettings>('/ai/settings'),
+  saveLlmSettings: (data: LlmSettingsIn) =>
+    request<LlmSettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  listConversations: () => request<ConversationSummary[]>('/ai/conversations'),
+  createConversation: () => request<ConversationSummary>('/ai/conversations', { method: 'POST' }),
+  getConversation: (id: string) => request<ConversationDetail>(`/ai/conversations/${id}`),
+  deleteConversation: (id: string) => request(`/ai/conversations/${id}`, { method: 'DELETE' }),
+  weeklyDraft: (weekStart: string) =>
+    request<WeeklyDraft>(`/ai/weekly-draft/${weekStart}`, { method: 'POST' }),
+
+  // Records
+  getProfile: () => request<PatientProfile>('/profile'),
+  saveProfile: (data: Partial<PatientProfile>) =>
+    request<PatientProfile>('/profile', { method: 'PUT', body: JSON.stringify(data) }),
+  getCondition: (id: string) => request<ConditionDetail>(`/pain-instances/${id}`),
+  addConditionNote: (id: string, data: { body: string; occurred_at?: string }) =>
+    request<ConditionNote>(`/pain-instances/${id}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(data)
+    }),
+  updateConditionNote: (noteId: string, data: { body?: string; occurred_at?: string }) =>
+    request<ConditionNote>(`/condition-notes/${noteId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+  deleteConditionNote: (noteId: string) =>
+    request(`/condition-notes/${noteId}`, { method: 'DELETE' }),
+  listDocuments: (params?: { owner_type?: string; instance_id?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.owner_type) q.set('owner_type', params.owner_type);
+    if (params?.instance_id) q.set('instance_id', params.instance_id);
+    return request<DocumentMeta[]>(`/documents?${q}`);
+  },
+  uploadDocument: async (form: FormData) => {
+    const res = await fetch('/api/v1/documents', {
+      method: 'POST',
+      credentials: 'include',
+      body: form
+    });
+    if (!res.ok) throw new Error(`${res.status}: ${(await res.json()).detail}`);
+    return (await res.json()) as DocumentMeta;
+  },
+  updateDocument: (id: string, data: { title?: string; notes?: string }) =>
+    request<DocumentMeta>(`/documents/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+  deleteDocument: (id: string) => request(`/documents/${id}`, { method: 'DELETE' }),
+  documentDownloadUrl: (id: string) => `/api/v1/documents/${id}/download`,
 
   // Import
   importXlsx: async (file: File) => {

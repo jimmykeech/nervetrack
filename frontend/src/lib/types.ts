@@ -141,7 +141,46 @@ export interface WeeklySummary {
   overall_status: Status | null;
   key_observations: string | null;
   trend_vs_last_week: string | null;
+  next_steps: string | null;
   computed: WeeklyComputed;
+}
+
+export interface LlmSettings {
+  provider: string | null;
+  model: string | null;
+  base_url: string | null;
+  api_key_set: boolean;
+  configured: boolean;
+}
+
+export interface LlmSettingsIn {
+  provider: string;
+  model: string;
+  api_key?: string | null;
+  base_url?: string | null;
+}
+
+export interface ConversationSummary {
+  id: string;
+  title: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: string;
+  content: string | null;
+  created_at: string;
+}
+
+export interface ConversationDetail extends ConversationSummary {
+  messages: ChatMessage[];
+}
+
+export interface WeeklyDraft {
+  key_observations: string;
+  next_steps: string;
 }
 
 export interface DailyStatPoint {
@@ -154,4 +193,39 @@ export interface DailyStatPoint {
   standing_minutes: number;
   lying_minutes: number;
   walking_minutes: number;
+}
+
+export interface PatientProfile {
+  dob: string | null;
+  sex: string | null;
+  height_cm: number | null;
+  weight_kg: number | null;
+  lifestyle: string | null;
+  medical_history: string | null;
+}
+
+export interface ConditionNote {
+  id: string;
+  instance_id: string;
+  occurred_at: string;
+  body: string;
+  created_at: string | null;
+}
+
+export interface DocumentMeta {
+  id: string;
+  owner_type: string;
+  instance_id: string | null;
+  title: string;
+  notes: string | null;
+  filename: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  created_at: string | null;
+}
+
+export interface ConditionDetail {
+  instance: PainInstance;
+  notes: ConditionNote[];
+  documents: DocumentMeta[];
 }

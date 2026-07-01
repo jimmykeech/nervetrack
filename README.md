@@ -7,7 +7,9 @@ stopwatch for tracking posture time while working.
 **Phase 1** (this build): daily tracking, a timestamped note log, pain events,
 strengthening sessions, the posture timer, a per-day event timeline, history charts,
 weekly aggregation, and spreadsheet import.
-**Phase 2** (designed for, not built): an in-app Claude chat over your data.
+**Phase 2** (this build): an in-app AI assistant — chat over your tracking data and
+AI-drafted weekly reviews, using your own key for Anthropic, OpenAI, Gemini,
+OpenRouter, or a fully-local Ollama model. Configure it under Settings → AI model.
 
 ## Stack
 
@@ -62,7 +64,7 @@ vars. No `.env` is committed (it holds secrets); create your own.
 | `BACKEND_URL` | — | `http://backend:8000` | Frontend (prod Node server) → backend base URL |
 | `VITE_API_PROXY` | — | `http://localhost:8000` | Frontend (dev Vite proxy) → backend base URL |
 | `BUCKET_NAME` + `AWS_*` | — | — | Optional: enable Litestream backup to an S3 bucket (see [docs/DEPLOY.md](docs/DEPLOY.md)) |
-| `ANTHROPIC_API_KEY` | `NERVETRACK_ANTHROPIC_API_KEY` | — | Reserved for Phase 2; unused in Phase 1 |
+| `NERVETRACK_SECRET_KEY` | `NERVETRACK_SECRET_KEY` | — | Encrypts per-user LLM API keys at rest (Phase 2). Required before storing a key. Per-user provider/model/key are set in the app UI. |
 
 > Running the backend **locally without Docker** loads `backend/.env` via
 > pydantic-settings, which expects the **prefixed** names directly (e.g.
@@ -140,14 +142,15 @@ from the daily data; only the user-written weekly fields are imported.
 | Sessions | `POST /entries/{date}/session`, `PUT /sessions/{id}`, `GET /sessions/{id}/previous`, `GET /sessions/latest` |
 | Timer | `POST /timer/start`, `POST /timer/stop`, `GET /timer/current`, `GET /timer/day/{date}`, `PATCH/DELETE /timer/intervals/{id}` |
 | Stats & weekly | `GET /stats/daily`, `GET /weeks`, `GET/PUT /weeks/{week_start}` |
-| Import / misc | `POST /import/xlsx`, `GET /ai/status` (Phase 2 placeholder), `GET /healthz` |
+| AI | `GET/PUT /ai/settings`, `GET/POST /ai/conversations`, `GET/DELETE /ai/conversations/{id}`, `POST /ai/conversations/{id}/messages` (SSE), `POST /ai/weekly-draft/{week_start}` |
+| Import / misc | `POST /import/xlsx`, `GET /healthz` |
 
 Interactive docs at `http://localhost:8000/docs` when the backend is running.
 
 ### Key behaviours
 
 - **Auth**: every `/api/v1` data route requires a valid session cookie (returns 401
-  otherwise); only `/healthz`, `/ai/status`, and the auth endpoints are public. Data is
+  otherwise); only `/healthz` and the auth endpoints are public. Data is
   scoped per account — entries, notes, timers, sessions, weeks, and the exercise
   catalogue are all per-user, and a new account is seeded with its own catalogue on
   first login.
@@ -235,10 +238,17 @@ runbook in **[docs/DEPLOY.md](docs/DEPLOY.md)**.
 NerveTrack is licensed under **AGPL-3.0** (see [LICENSE](LICENSE)). If you run a
 modified version as a network service, you must offer your users its source.
 
-## Phase 2 (not built)
+## Phase 2 — AI assistant
 
-The schema and a `get_week_bundle(week_start)` service function are already shaped to
-serialise a week's data into an LLM context. `backend/app/routers/ai.py` (currently a
-`GET /ai/status` placeholder returning `coming_soon`) and the `ANTHROPIC_API_KEY` env
-var are reserved for the future in-app chat (weekly-summary drafting and free-form
-Q&A over the data). Nothing AI-related runs in Phase 1.
+An in-app assistant chats over your tracking data and drafts weekly reviews. It is
+provider-agnostic (via [LiteLLM](https://github.com/BerriAI/litellm)): configure your
+own key for Anthropic, OpenAI, Gemini, OpenRouter, or point at a local **Ollama** model
+so no health data ever leaves your machine. Set the model string under
+**Settings → AI model**; keys are stored per-user, encrypted at rest with
+`NERVETRACK_SECRET_KEY`, and never returned to the browser.
+
+- **Chat** page — ask free-form questions ("is my sitting time correlated with
+  flare-ups?", "compare this week to week 5"). The model reads your data through
+  read-only, per-user tools and streams its answer.
+- **Weekly → ✨ Draft with AI** — drafts the week's Key Observations and Next Steps
+  into editable fields for you to review and save.
