@@ -3,15 +3,10 @@
   import { auth, signOut } from '$lib/stores/auth.svelte';
   import { goto } from '$app/navigation';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
-  import { painInstances, loadPainInstances } from '$lib/stores/painInstances.svelte';
   import { onMount } from 'svelte';
   import type { LlmSettings } from '$lib/types';
 
   let file = $state<File | null>(null);
-
-  let newName = $state('');
-  let newRegion = $state('');
-  let newBackground = $state('');
 
   let llm = $state<LlmSettings | null>(null);
   let provider = $state('anthropic');
@@ -31,7 +26,6 @@
   };
 
   onMount(async () => {
-    if (!painInstances.loaded) loadPainInstances();
     llm = await api.getLlmSettings();
     if (llm.provider) provider = llm.provider;
     model = llm.model ?? '';
@@ -55,24 +49,6 @@
     } finally {
       llmBusy = false;
     }
-  }
-
-  async function addInstance() {
-    if (!newName.trim()) return;
-    await api.createPainInstance({
-      name: newName.trim(),
-      body_region: newRegion.trim() || undefined,
-      background: newBackground.trim() || undefined
-    });
-    newName = '';
-    newRegion = '';
-    newBackground = '';
-    await loadPainInstances();
-  }
-
-  async function toggleActive(id: string, active: boolean) {
-    await api.patchPainInstance(id, { active: !active });
-    await loadPainInstances();
   }
 
   async function handleLogout() {
@@ -120,35 +96,11 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-top: 0">Pain instances</h2>
+  <h2 style="margin-top: 0">Conditions & records</h2>
   <p class="muted small">
-    The nerve pain issues you're tracking. Tag pain jabs and strengthening sessions with these on
-    the Today and Exercises pages.
+    Manage your conditions, patient background, and documents on the
+    <a href="/records">Records</a> page.
   </p>
-  <ul class="cat">
-    {#each painInstances.list as pi (pi.id)}
-      <li>
-        <span
-          >{pi.name}{pi.body_region ? ` · ${pi.body_region}` : ''}{!pi.active
-            ? ' (inactive)'
-            : ''}</span
-        >
-        <button class="link" onclick={() => toggleActive(pi.id, pi.active)}
-          >{pi.active ? 'retire' : 'reactivate'}</button
-        >
-      </li>
-    {/each}
-  </ul>
-  <div class="row" style="margin-top: 0.75rem; flex-wrap: wrap; gap: 0.5rem">
-    <input bind:value={newName} placeholder="Name, e.g. Left sciatic" style="flex: 1 1 10rem" />
-    <input bind:value={newRegion} placeholder="Body region (optional)" style="flex: 1 1 8rem" />
-    <button onclick={addInstance}>Add</button>
-  </div>
-  <textarea
-    bind:value={newBackground}
-    placeholder="Background (optional)"
-    style="margin-top: 0.5rem; width: 100%"
-  ></textarea>
 </div>
 
 <div class="card">
@@ -227,24 +179,3 @@
     then use the Chat page and the Weekly “Draft with AI” button.
   </p>
 </div>
-
-<style>
-  .cat {
-    list-style: none;
-    padding: 0;
-    margin: 0;
-  }
-  .cat li {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.4rem 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .link {
-    border: none;
-    background: none;
-    color: var(--text-muted);
-    padding: 0;
-    font-size: 0.85rem;
-  }
-</style>
