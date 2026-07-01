@@ -6,8 +6,10 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { auth, loadUser, signOut } from '$lib/stores/auth.svelte';
+  import PainInstanceOnboarding from '$lib/components/PainInstanceOnboarding.svelte';
   import ThemeToggle from '$lib/components/ThemeToggle.svelte';
   import { initTheme } from '$lib/stores/theme.svelte';
+  import { loadPainInstances, painInstances } from '$lib/stores/painInstances.svelte';
 
   let { children } = $props();
 
@@ -34,6 +36,7 @@
     // stay put and surface it (see the error block in <main>) rather than
     // looping to a login page whose Google button hits the same failure.
     if (!user && !auth.error && !isLogin) goto('/login');
+    if (user) await loadPainInstances();
   });
 
   async function handleLogout() {
@@ -67,7 +70,13 @@
     </header>
     <main>
       {#if auth.ready && auth.user}
-        {@render children()}
+        {#if !painInstances.loaded}
+          <!-- brief gap while the pain-instance catalogue loads -->
+        {:else if painInstances.list.length === 0}
+          <PainInstanceOnboarding />
+        {:else}
+          {@render children()}
+        {/if}
       {:else if auth.ready && auth.error}
         <div class="card loaderr">
           <p>Couldn’t reach the server.</p>
