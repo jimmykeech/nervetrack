@@ -15,6 +15,7 @@ from app.routers import (
     daily_entries,
     exercises,
     imports,
+    pain_instances,
     sessions,
     stats,
     timer,
@@ -47,7 +48,18 @@ def create_app() -> FastAPI:
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
-    for module in (auth, daily_entries, exercises, sessions, timer, weekly, stats, imports, ai):
+    for module in (
+        auth,
+        daily_entries,
+        exercises,
+        pain_instances,
+        sessions,
+        timer,
+        weekly,
+        stats,
+        imports,
+        ai,
+    ):
         app.include_router(module.router, prefix=API_PREFIX)
 
     return app
