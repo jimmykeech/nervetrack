@@ -110,38 +110,40 @@
   {#if store.intervals.length === 0}
     <p class="muted small">No intervals yet. Tap a posture above to start.</p>
   {:else}
-    <table>
-      <thead>
-        <tr><th>Posture</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
-      </thead>
-      <tbody>
-        {#each store.intervals as iv}
-          <tr>
-            <td>{POSTURE_LABEL[iv.posture]}{iv.label ? ` · ${iv.label}` : ''}</td>
-            <td
-              ><button class="link" onclick={() => editTime(iv.id, 'started_at', iv.started_at)}
-                >{fmtTime(iv.started_at)}</button
-              ></td
-            >
-            <td>
-              {#if iv.ended_at}
-                <button class="link" onclick={() => editTime(iv.id, 'ended_at', iv.ended_at)}
-                  >{fmtTime(iv.ended_at)}</button
-                >
-              {:else}
-                <span class="live">running</span>
-              {/if}
-            </td>
-            <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-            <td
-              ><button class="link danger" onclick={() => store.deleteInterval(iv.id)}
-                >delete</button
-              ></td
-            >
-          </tr>
-        {/each}
-      </tbody>
-    </table>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Posture</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
+        </thead>
+        <tbody>
+          {#each store.intervals as iv}
+            <tr>
+              <td>{POSTURE_LABEL[iv.posture]}{iv.label ? ` · ${iv.label}` : ''}</td>
+              <td
+                ><button class="link" onclick={() => editTime(iv.id, 'started_at', iv.started_at)}
+                  >{fmtTime(iv.started_at)}</button
+                ></td
+              >
+              <td>
+                {#if iv.ended_at}
+                  <button class="link" onclick={() => editTime(iv.id, 'ended_at', iv.ended_at)}
+                    >{fmtTime(iv.ended_at)}</button
+                  >
+                {:else}
+                  <span class="live">running</span>
+                {/if}
+              </td>
+              <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
+              <td
+                ><button class="link danger" onclick={() => store.deleteInterval(iv.id)}
+                  >delete</button
+                ></td
+              >
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
   {/if}
 </div>
 
@@ -222,5 +224,14 @@
   .live {
     color: var(--good);
     font-size: 0.85rem;
+  }
+
+  @media (max-width: 640px) {
+    .postures {
+      grid-template-columns: 1fr;
+    }
+    .tgrid {
+      grid-template-columns: repeat(2, 1fr);
+    }
   }
 </style>

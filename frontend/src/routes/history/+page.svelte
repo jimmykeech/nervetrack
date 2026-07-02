@@ -83,31 +83,33 @@
 
 <div class="card">
   <h3 style="margin-top: 0">Entries</h3>
-  <table>
-    <thead>
-      <tr
-        ><th>Date</th><th>Status</th><th>Episodes</th><th>Worst</th><th>Tingling</th><th>Sleep</th
-        ></tr
-      >
-    </thead>
-    <tbody>
-      {#each entries as e}
-        <tr>
-          <td><a href={`/?date=${e.entry_date}`}>{e.entry_date}</a></td>
-          <td>
-            {#if e.status}<span class="dot {statusClass[e.status]}"></span>{e.status}{:else}—{/if}
-          </td>
-          <td>{e.sharp_pain_episodes}</td>
-          <td>{e.worst_pain ?? '—'}</td>
-          <td>{e.tingling_level ?? '—'}</td>
-          <td>{e.sleep_quality ?? '—'}</td>
-        </tr>
-      {/each}
-      {#if entries.length === 0}
-        <tr><td colspan="6" class="muted">No entries in range.</td></tr>
-      {/if}
-    </tbody>
-  </table>
+  <div class="table-scroll">
+    <table>
+      <thead>
+        <tr
+          ><th>Date</th><th>Status</th><th>Episodes</th><th>Worst</th><th>Tingling</th><th>Sleep</th
+          ></tr
+        >
+      </thead>
+      <tbody>
+        {#each entries as e}
+          <tr>
+            <td><a href={`/?date=${e.entry_date}`}>{e.entry_date}</a></td>
+            <td>
+              {#if e.status}<span class="dot {statusClass[e.status]}"></span>{e.status}{:else}—{/if}
+            </td>
+            <td>{e.sharp_pain_episodes}</td>
+            <td>{e.worst_pain ?? '—'}</td>
+            <td>{e.tingling_level ?? '—'}</td>
+            <td>{e.sleep_quality ?? '—'}</td>
+          </tr>
+        {/each}
+        {#if entries.length === 0}
+          <tr><td colspan="6" class="muted">No entries in range.</td></tr>
+        {/if}
+      </tbody>
+    </table>
+  </div>
 </div>
 
 <style>
