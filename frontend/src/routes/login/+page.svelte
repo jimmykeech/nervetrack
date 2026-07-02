@@ -151,8 +151,6 @@
     padding: 0.65rem 1rem;
     border-radius: 8px;
     border: none;
-    background: var(--accent, #4285f4);
-    color: #fff;
     font-weight: 600;
     cursor: pointer;
   }
