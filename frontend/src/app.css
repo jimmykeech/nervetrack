@@ -12,6 +12,8 @@
   --text-muted: #94a0ac;
   --text-faint: #626d7a;
   --accent: #38a9f0;
+  /* "Nerve" half of the wordmark ("Track" half uses --accent) */
+  --logo-ink: var(--text);
 
   --good: #3fb883;
   --caution: #d9a441;
@@ -52,6 +54,7 @@
   --text-muted: #5c6875;
   --text-faint: #8a97a5;
   --accent: #1573b0;
+  --logo-ink: #123a5c;
 
   --good: #2f9e6b;
   --caution: #c08a2e;
@@ -85,6 +88,11 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* Two-tone wordmark: "Track" in the accent, applied wherever the logo renders. */
+.brand-accent {
+  color: var(--accent);
 }
 
 h1,
