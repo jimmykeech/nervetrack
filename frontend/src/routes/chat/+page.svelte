@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import { ChatStore } from '$lib/stores/chat.svelte';
+  import { renderMarkdown } from '$lib/markdown';
 
   const chat = new ChatStore();
   let draft = $state('');
@@ -40,7 +41,12 @@
     <div class="messages">
       {#each chat.messages as m}
         <div class="msg {m.role}">
-          <div class="bubble">{m.content}</div>
+          {#if m.role === 'assistant'}
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+            <div class="bubble markdown">{@html renderMarkdown(m.content)}</div>
+          {:else}
+            <div class="bubble">{m.content}</div>
+          {/if}
         </div>
       {/each}
       {#if chat.tool}
@@ -49,7 +55,10 @@
         </div>
       {/if}
       {#if chat.streaming}
-        <div class="msg assistant"><div class="bubble">{chat.streaming}</div></div>
+        <div class="msg assistant">
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+          <div class="bubble markdown">{@html renderMarkdown(chat.streaming)}</div>
+        </div>
       {/if}
     </div>
     {#if chat.error}<p class="error small">{chat.error}</p>{/if}
@@ -121,6 +130,8 @@
     max-width: 80%;
     padding: 0.5rem 0.75rem;
     border-radius: 0.75rem;
+  }
+  .bubble:not(.markdown) {
     white-space: pre-wrap;
   }
   .msg.user .bubble {
@@ -141,5 +152,65 @@
     .chat-layout {
       grid-template-columns: 1fr;
     }
+  }
+  .bubble.markdown :global(> :first-child) {
+    margin-top: 0;
+  }
+  .bubble.markdown :global(> :last-child) {
+    margin-bottom: 0;
+  }
+  .bubble.markdown :global(h1),
+  .bubble.markdown :global(h2),
+  .bubble.markdown :global(h3) {
+    margin: 0.6rem 0 0.3rem;
+    line-height: 1.25;
+  }
+  .bubble.markdown :global(p),
+  .bubble.markdown :global(ul),
+  .bubble.markdown :global(ol) {
+    margin: 0.4rem 0;
+  }
+  .bubble.markdown :global(ul),
+  .bubble.markdown :global(ol) {
+    padding-left: 1.25rem;
+  }
+  .bubble.markdown :global(li) {
+    margin: 0.15rem 0;
+  }
+  .bubble.markdown :global(code) {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.9em;
+    background: var(--surface-2);
+    padding: 0.1em 0.3em;
+    border-radius: 0.3rem;
+  }
+  .bubble.markdown :global(pre) {
+    background: var(--surface-2);
+    padding: 0.6rem 0.75rem;
+    border-radius: 0.5rem;
+    overflow-x: auto;
+  }
+  .bubble.markdown :global(pre code) {
+    background: none;
+    padding: 0;
+  }
+  .bubble.markdown :global(table) {
+    border-collapse: collapse;
+    margin: 0.4rem 0;
+  }
+  .bubble.markdown :global(th),
+  .bubble.markdown :global(td) {
+    border: 1px solid var(--surface-2);
+    padding: 0.25rem 0.5rem;
+  }
+  .bubble.markdown :global(blockquote) {
+    margin: 0.4rem 0;
+    padding-left: 0.75rem;
+    border-left: 3px solid var(--accent-soft);
+    opacity: 0.9;
+  }
+  .bubble.markdown :global(a) {
+    color: var(--accent);
+    text-decoration: underline;
   }
 </style>
