@@ -157,6 +157,36 @@ input[type='checkbox'] {
   width: auto;
   accent-color: var(--accent);
 }
+/* iOS Safari keeps native date inputs at an intrinsic width (ignoring
+   width:100%, so they overflow their container) and renders no calendar
+   glyph. Neutralise the native appearance so width is honoured, and paint a
+   custom calendar icon on every platform. The native picker indicator is kept
+   as an invisible, full-height click target so the desktop picker still opens. */
+input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  min-width: 0;
+  padding-right: 2rem;
+  background-image: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20width='24'%20height='24'%20viewBox='0%200%2024%2024'%20fill='none'%20stroke='%23888888'%20stroke-width='2'%20stroke-linecap='round'%20stroke-linejoin='round'%3E%3Crect%20x='3'%20y='4'%20width='18'%20height='18'%20rx='2'/%3E%3Cline%20x1='16'%20y1='2'%20x2='16'%20y2='6'/%3E%3Cline%20x1='8'%20y1='2'%20x2='8'%20y2='6'/%3E%3Cline%20x1='3'%20y1='10'%20x2='21'%20y2='10'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1.05rem 1.05rem;
+}
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+}
+input[type='date']::-webkit-calendar-picker-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2rem;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  opacity: 0;
+  cursor: pointer;
+}
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
@@ -193,6 +223,7 @@ label {
 }
 .field {
   flex: 1 1 8rem;
+  min-width: 0;
   margin-bottom: 0.75rem;
 }
 .grid-2 {
