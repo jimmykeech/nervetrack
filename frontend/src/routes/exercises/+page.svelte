@@ -122,12 +122,12 @@
 </script>
 
 <div class="card">
-  <div class="row" style="align-items: center; gap: 1rem">
-    <div class="field" style="margin: 0">
+  <div class="row session-meta">
+    <div class="field">
       <label>Session date</label>
       <input type="date" bind:value={date} />
     </div>
-    <div class="field" style="margin: 0; max-width: 10rem">
+    <div class="field f-intensity">
       <label>Intensity (1–10)</label>
       <input type="number" min="1" max="10" step="0.5" bind:value={intensity} />
     </div>
@@ -311,5 +311,24 @@
   .chip.on {
     border-color: var(--accent);
     color: var(--text);
+  }
+  .session-meta {
+    align-items: center;
+    gap: 1rem;
+  }
+  .session-meta .field {
+    margin: 0;
+  }
+  .f-intensity {
+    max-width: 10rem;
+  }
+  @media (max-width: 640px) {
+    .session-meta {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .session-meta .field {
+      max-width: none;
+    }
   }
 </style>
