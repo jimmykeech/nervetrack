@@ -45,7 +45,7 @@
 
 <div class="login">
   <div class="card">
-    <h1>NerveTrack</h1>
+    <h1>Nerve<span class="brand-accent">Track</span></h1>
     <p class="muted">Sign in to track your recovery.</p>
     {#if urlError}
       <p class="error">{errors[urlError] ?? 'Sign-in failed. Please try again.'}</p>
@@ -99,6 +99,7 @@
   }
   h1 {
     margin: 0.25rem 0;
+    color: var(--logo-ink);
   }
   .google {
     display: flex;

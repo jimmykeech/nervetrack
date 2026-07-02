@@ -55,7 +55,7 @@
   <div class="shell">
     <header>
       <div class="topline">
-        <div class="brand">NerveTrack</div>
+        <div class="brand">Nerve<span class="brand-accent">Track</span></div>
         <div class="account">
           <ThemeToggle />
           {#if auth.user}
@@ -124,6 +124,7 @@
     font-family: var(--font-display);
     font-weight: 700;
     font-size: 1.25rem;
+    color: var(--logo-ink);
   }
   .account {
     display: flex;
