@@ -152,4 +152,11 @@
     background: var(--surface);
     border-color: var(--border);
   }
+
+  @media (max-width: 640px) {
+    .account .muted,
+    .account .logout {
+      display: none;
+    }
+  }
 </style>
