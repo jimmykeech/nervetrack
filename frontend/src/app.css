@@ -1,7 +1,7 @@
 /* ---------- Still Water design tokens ---------- */
 /* Dark is the default (:root); light overrides via [data-theme="light"]. */
 :root {
-  --font-display: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+  --font-display: 'Space Grotesk Variable', system-ui, -apple-system, sans-serif;
   --font-ui: 'Hanken Grotesk Variable', system-ui, -apple-system, sans-serif;
 
   --bg: #0e1116;
