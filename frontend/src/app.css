@@ -51,7 +51,7 @@
   --text: #1b2430;
   --text-muted: #5c6875;
   --text-faint: #8a97a5;
-  --accent: #1f8fd6;
+  --accent: #1573b0;
 
   --good: #2f9e6b;
   --caution: #c08a2e;
@@ -126,6 +126,12 @@ button:disabled {
 .btn-primary:hover {
   background: color-mix(in srgb, var(--accent) 88%, #000);
   border-color: color-mix(in srgb, var(--accent) 88%, #000);
+}
+/* Light theme's accent is darker for AA link contrast, so primary buttons
+   need light text (dark ink would fail on it; white fails on the lighter
+   dark-theme accent — hence the theme-scoped override). */
+[data-theme='light'] .btn-primary {
+  color: #fff;
 }
 :focus-visible {
   outline: 2px solid var(--accent);
@@ -232,7 +238,7 @@ label {
 }
 .status-R {
   background: var(--bad);
-  color: #2a0b09;
+  color: #000000;
   border-color: var(--bad);
 }
 
