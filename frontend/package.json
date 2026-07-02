@@ -22,6 +22,7 @@
     "@types/node": "^22.0.0",
     "eslint": "^9.0.0",
     "eslint-plugin-svelte": "^2.45.0",
+    "jsdom": "^27.0.1",
     "prettier": "^3.3.0",
     "prettier-plugin-svelte": "^3.2.0",
     "svelte": "^5.0.0",
@@ -35,6 +36,8 @@
   "dependencies": {
     "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/hanken-grotesk": "^5.2.8",
-    "chart.js": "^4.4.0"
+    "chart.js": "^4.4.0",
+    "dompurify": "^3.4.11",
+    "marked": "^18.0.5"
   }
 }
