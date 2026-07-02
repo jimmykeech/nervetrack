@@ -123,7 +123,7 @@
   .brand {
     font-family: var(--font-display);
     font-weight: 700;
-    font-size: 1.25rem;
+    font-size: 2.5rem;
     color: var(--logo-ink);
   }
   .account {
