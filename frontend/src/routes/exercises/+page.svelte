@@ -326,7 +326,7 @@
     .session-meta {
       flex-direction: column;
       align-items: stretch;
-      gap: 0.5rem;
+      gap: 0.25rem;
     }
     .session-meta .field {
       max-width: none;
