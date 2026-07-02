@@ -149,7 +149,9 @@
   {/if}
 
   <div class="row" style="margin-top: 0.75rem; gap: 0.6rem; align-items: center">
-    <button onclick={saveLlm} disabled={llmBusy || !model.trim()}>Save AI settings</button>
+    <button onclick={saveLlm} class="btn-primary" disabled={llmBusy || !model.trim()}
+      >Save AI settings</button
+    >
     {#if llmMsg}<span class="small muted">{llmMsg}</span>{/if}
   </div>
 </div>

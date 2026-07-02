@@ -1,5 +1,5 @@
 <script lang="ts">
-  import '@fontsource-variable/fraunces';
+  import '@fontsource-variable/space-grotesk';
   import '@fontsource-variable/hanken-grotesk';
   import '../app.css';
   import { onMount } from 'svelte';

@@ -191,4 +191,10 @@
     flex: 1;
     font-weight: 600;
   }
+
+  @media (max-width: 640px) {
+    .metrics {
+      grid-template-columns: 1fr;
+    }
+  }
 </style>

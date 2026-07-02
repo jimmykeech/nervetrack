@@ -64,7 +64,9 @@
     {#if chat.error}<p class="error small">{chat.error}</p>{/if}
     <form class="composer" onsubmit={submit}>
       <input placeholder="Ask anything…" bind:value={draft} disabled={chat.sending} />
-      <button type="submit" disabled={chat.sending || !draft.trim()}>Send</button>
+      <button type="submit" class="btn-primary" disabled={chat.sending || !draft.trim()}
+        >Send</button
+      >
     </form>
   </section>
 </div>

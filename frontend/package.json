@@ -34,8 +34,8 @@
     "vitest": "^2.1.0"
   },
   "dependencies": {
-    "@fontsource-variable/fraunces": "^5.2.9",
     "@fontsource-variable/hanken-grotesk": "^5.2.8",
+    "@fontsource-variable/space-grotesk": "^5.2.10",
     "chart.js": "^4.4.0",
     "dompurify": "^3.4.11",
     "marked": "^18.0.5"

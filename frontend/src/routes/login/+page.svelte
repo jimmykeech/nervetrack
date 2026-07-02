@@ -70,7 +70,9 @@
         {#if registering}
           <input type="text" placeholder="Name (optional)" bind:value={name} />
         {/if}
-        <button type="submit" disabled={busy}>{registering ? 'Create account' : 'Sign in'}</button>
+        <button type="submit" class="btn-primary" disabled={busy}
+          >{registering ? 'Create account' : 'Sign in'}</button
+        >
         {#if cfg.allow_registration}
           <button type="button" class="link" onclick={() => (registering = !registering)}>
             {registering ? 'Have an account? Sign in' : 'Create an account'}
@@ -149,8 +151,6 @@
     padding: 0.65rem 1rem;
     border-radius: 8px;
     border: none;
-    background: var(--accent, #4285f4);
-    color: #fff;
     font-weight: 600;
     cursor: pointer;
   }
