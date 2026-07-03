@@ -83,3 +83,22 @@ def test_tingling_endpoints_flow(auth_client):
 def test_tingling_start_rejects_missing_level(auth_client):
     r = auth_client.post("/api/v1/tingling/start", json={})
     assert r.status_code == 422
+
+
+def test_start_recomputes_previous_day_when_crossing_midnight(db, user_id):
+    from datetime import date
+
+    from app.services import tingling
+    from app.services.entries import get_entry
+    # A running interval left open on a prior day (600s worth), then Start next day.
+    db.execute(
+        "INSERT INTO tingling_sessions "
+        "(user_id, entry_date, level, started_at, ended_at, duration_seconds) "
+        "VALUES (?, '2026-06-20', 5, '2026-06-20T23:50:00', NULL, NULL)",
+        [user_id],
+    )
+    tingling.start(db, user_id, 3)  # closes the prior-day interval, recomputes its day
+    prev = get_entry(db, user_id, date(2026, 6, 20))
+    assert prev is not None
+    assert prev.tingling_duration_minutes is not None  # prior day was recomputed, not left stale
+    assert int(prev.tingling_level) == 5

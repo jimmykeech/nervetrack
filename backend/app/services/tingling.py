@@ -52,7 +52,7 @@ def stop(db: Database, user_id: UUID, at: datetime | None = None) -> TinglingInt
 def start(db: Database, user_id: UUID, level: Decimal) -> TinglingInterval:
     with db.cursor():
         now = now_utc()
-        _close_running(db, user_id, now)
+        closed = _close_running(db, user_id, now)
         row = db.query_one(
             """
             INSERT INTO tingling_sessions (user_id, entry_date, level, started_at)
@@ -62,6 +62,8 @@ def start(db: Database, user_id: UUID, level: Decimal) -> TinglingInterval:
             [user_id, local_date(now), level, now],
         )
         assert row is not None
+        if closed is not None and closed["entry_date"] != row["entry_date"]:
+            _recompute_daily_tingling(db, user_id, closed["entry_date"])
         _recompute_daily_tingling(db, user_id, row["entry_date"])
     return TinglingInterval(**row)
 
@@ -103,7 +105,7 @@ def _recompute_daily_tingling(db: Database, user_id: UUID, entry_date: date) -> 
         )
         return
     entry_id = ensure_entry(db, user_id, entry_date)
-    minutes = round((agg["secs"] or 0) / 60)
+    minutes = ((agg["secs"] or 0) + 30) // 60
     db.execute(
         "UPDATE daily_entries SET tingling_level = ?, tingling_duration_minutes = ?, "
         "updated_at = ? WHERE id = ?",

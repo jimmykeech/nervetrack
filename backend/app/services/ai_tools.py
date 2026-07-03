@@ -188,7 +188,7 @@ def _tingling_totals(db: Database, user_id: UUID, lo: date, hi: date) -> list[di
         """
         SELECT entry_date,
                MAX(level) AS max_level,
-               CAST(SUM(duration_seconds) / 60 AS INTEGER) AS minutes
+               CAST((SUM(duration_seconds) + 30) / 60 AS INTEGER) AS minutes
         FROM tingling_sessions
         WHERE user_id = ? AND entry_date >= ? AND entry_date <= ? AND ended_at IS NOT NULL
         GROUP BY entry_date

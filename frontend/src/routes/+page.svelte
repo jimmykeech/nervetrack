@@ -92,8 +92,6 @@
       strengthening_done,
       session_intensity,
       worst_pain,
-      tingling_level,
-      tingling_duration_minutes,
       stretches_morning,
       stretches_night,
       iced,
