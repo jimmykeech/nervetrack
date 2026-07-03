@@ -69,3 +69,17 @@ def test_delete_last_interval_clears_daily_fields(db, user_id):
     if entry is not None:
         assert entry.tingling_level is None
         assert entry.tingling_duration_minutes is None
+
+
+def test_tingling_endpoints_flow(auth_client):
+    r = auth_client.post("/api/v1/tingling/start", json={"level": 4})
+    assert r.status_code == 200
+    assert r.json()["ended_at"] is None
+    r = auth_client.post("/api/v1/tingling/stop")
+    assert r.status_code == 200
+    assert auth_client.get("/api/v1/tingling/current").json() is None
+
+
+def test_tingling_start_rejects_missing_level(auth_client):
+    r = auth_client.post("/api/v1/tingling/start", json={})
+    assert r.status_code == 422

@@ -21,6 +21,7 @@ from app.routers import (
     sessions,
     stats,
     timer,
+    tingling,
     weekly,
 )
 
@@ -59,6 +60,7 @@ def create_app() -> FastAPI:
         records,
         sessions,
         timer,
+        tingling,
         weekly,
         stats,
         imports,
