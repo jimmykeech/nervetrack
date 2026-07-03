@@ -123,3 +123,14 @@ export function defaultJabTime(dateISO: string, now: Date = new Date()): string 
   const mm = now.getMinutes().toString().padStart(2, '0');
   return `${hh}:${mm}`;
 }
+
+/** Trim a user-entered interval label; empty/whitespace becomes null (clears it). */
+export function normalizeLabel(input: string | null | undefined): string | null {
+  const s = (input ?? '').trim();
+  return s === '' ? null : s;
+}
+
+/** True when an interval's end is strictly after its start (ISO datetime strings). */
+export function endsAfterStart(startIso: string, endIso: string): boolean {
+  return new Date(endIso).getTime() > new Date(startIso).getTime();
+}
