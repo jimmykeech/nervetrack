@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { TimerStore } from '$lib/stores/timer.svelte';
+  import { TinglingTimerStore } from '$lib/stores/tingling.svelte';
   import {
     formatDuration,
     formatMinutesish,
@@ -17,15 +18,22 @@
   }
 
   const store = new TimerStore();
+  const tingle = new TinglingTimerStore();
   const NUDGE_SECONDS = 45 * 60;
 
   let label = $state('');
+  let tingleLevel = $state<number | null>(null);
 
   onMount(() => {
     store.load();
     store.startTicking();
+    tingle.load();
+    tingle.startTicking();
   });
-  onDestroy(() => store.stopTicking());
+  onDestroy(() => {
+    store.stopTicking();
+    tingle.stopTicking();
+  });
 
   async function pick(posture: Posture) {
     await store.switchTo(posture, label.trim() || undefined);
@@ -35,6 +43,14 @@
   async function stop() {
     await store.stop();
     label = '';
+  }
+
+  async function startTingle() {
+    if (tingleLevel === null) return;
+    await tingle.start(tingleLevel);
+  }
+  async function stopTingle() {
+    await tingle.stop();
   }
 
   function fmtTime(iso: string): string {
@@ -103,6 +119,54 @@
   </div>
   <div class="ratio">Sit : Stand = <strong>{sitStandRatio(totals)}</strong></div>
   <div style="margin-top: 0.9rem"><RatioBar {totals} showHeader={false} /></div>
+</div>
+
+<div class="card">
+  <h3 style="margin-top: 0">Tingling timer</h3>
+  <div class="card display" class:running={!!tingle.running} style="margin-bottom: 0.75rem">
+    {#if tingle.running}
+      <div class="posture">Tingling · level {tingle.running.level}</div>
+      <div class="clock">{formatDuration(tingle.elapsed)}</div>
+    {:else}
+      <div class="posture muted">Not tracking</div>
+      <div class="clock muted">00s</div>
+    {/if}
+  </div>
+  <div class="row" style="align-items: flex-end; gap: 0.75rem">
+    <div class="field" style="margin: 0; max-width: 10rem">
+      <label>Tingling level (0–10)</label>
+      <input type="number" min="0" max="10" step="0.5" bind:value={tingleLevel} />
+    </div>
+    <button
+      class="btn-primary"
+      onclick={startTingle}
+      disabled={tingleLevel === null || !!tingle.running}>Start</button
+    >
+    <button onclick={stopTingle} disabled={!tingle.running}>Stop</button>
+  </div>
+  {#if tingle.intervals.length > 0}
+    <div class="table-scroll" style="margin-top: 0.75rem">
+      <table>
+        <thead>
+          <tr><th>Level</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
+        </thead>
+        <tbody>
+          {#each tingle.intervals as iv}
+            <tr>
+              <td>{iv.level}</td>
+              <td>{fmtTime(iv.started_at)}</td>
+              <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
+              <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
+              <td
+                ><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button
+                ></td
+              >
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  {/if}
 </div>
 
 <div class="card">
