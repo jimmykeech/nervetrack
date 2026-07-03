@@ -229,3 +229,18 @@ export interface ConditionDetail {
   notes: ConditionNote[];
   documents: DocumentMeta[];
 }
+
+export interface TinglingInterval {
+  id: string;
+  entry_date: string;
+  level: number;
+  started_at: string;
+  ended_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface DayTingling {
+  entry_date: string;
+  intervals: TinglingInterval[];
+  running: TinglingInterval | null;
+}
