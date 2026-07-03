@@ -10,7 +10,9 @@
     shiftISODate,
     todayISO,
     normalizeLabel,
-    endsAfterStart
+    endsAfterStart,
+    utcNaiveToLocalInput,
+    localInputToUtcNaive
   } from '$lib/time';
   import type { Posture } from '$lib/types';
   import RatioBar from '$lib/components/RatioBar.svelte';
@@ -50,13 +52,13 @@
   async function editTime(id: string, field: 'started_at' | 'ended_at', current: string | null) {
     editErr = '';
     const iv = store.intervals.find((x) => x.id === id);
-    const initial = current ? new Date(current + 'Z').toISOString().slice(0, 16) : '';
+    const initial = current ? utcNaiveToLocalInput(current) : '';
     const input = prompt(
       `New ${field === 'started_at' ? 'start' : 'end'} time (YYYY-MM-DDTHH:MM)`,
       initial
     );
     if (!input) return;
-    const utc = new Date(input).toISOString().slice(0, 19);
+    const utc = localInputToUtcNaive(input);
     if (iv) {
       const start = field === 'started_at' ? utc : iv.started_at;
       const end = field === 'ended_at' ? utc : iv.ended_at;
@@ -65,13 +67,22 @@
         return;
       }
     }
-    await store.editInterval(id, { [field]: utc });
+    try {
+      await store.editInterval(id, { [field]: utc });
+    } catch {
+      editErr = 'Could not save the change.';
+    }
   }
 
   async function editLabel(id: string, current: string | null) {
+    editErr = '';
     const input = prompt('Label for this interval (leave empty to clear)', current ?? '');
     if (input === null) return; // cancelled
-    await store.editInterval(id, { label: normalizeLabel(input) });
+    try {
+      await store.editInterval(id, { label: normalizeLabel(input) });
+    } catch {
+      editErr = 'Could not save the label.';
+    }
   }
 
   const running = $derived(store.running);

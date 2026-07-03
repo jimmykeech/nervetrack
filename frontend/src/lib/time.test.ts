@@ -11,7 +11,9 @@ import {
   parseDurationToMinutes,
   shiftISODate,
   sitStandRatio,
-  todayISO
+  todayISO,
+  utcNaiveToLocalInput,
+  localInputToUtcNaive
 } from './time';
 import type { Interval } from './types';
 
@@ -142,5 +144,16 @@ describe('endsAfterStart', () => {
   it('is false when end equals or precedes start', () => {
     expect(endsAfterStart('2026-01-01T09:00:00', '2026-01-01T09:00:00')).toBe(false);
     expect(endsAfterStart('2026-01-01T09:30:00', '2026-01-01T09:00:00')).toBe(false);
+  });
+});
+
+describe('local/UTC input round-trip', () => {
+  it('round-trips a UTC-naive time through local input form', () => {
+    // Symmetric by construction (both interpret local), so this holds in any TZ.
+    const original = '2026-01-01T09:00:00';
+    expect(localInputToUtcNaive(utcNaiveToLocalInput(original))).toBe(original);
+  });
+  it('produces a minute-precision local input value', () => {
+    expect(utcNaiveToLocalInput('2026-01-01T09:05:00')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
   });
 });
