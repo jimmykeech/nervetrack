@@ -2,7 +2,7 @@
 // this restores it on load and keeps a live tick for the elapsed display.
 import { api } from '$lib/api';
 import type { TinglingInterval } from '$lib/types';
-import { todayISO } from '$lib/time';
+import { intervalSeconds, todayISO } from '$lib/time';
 
 export class TinglingTimerStore {
   running = $state<TinglingInterval | null>(null);
@@ -12,18 +12,8 @@ export class TinglingTimerStore {
 
   private ticker: ReturnType<typeof setInterval> | null = null;
 
-  // Mirrors `intervalSeconds` from $lib/time, but that helper's parameter type
-  // (`Interval`) requires `posture`/`label` fields that `TinglingInterval`
-  // doesn't have, so the same started_at/ended_at/duration_seconds logic is
-  // reproduced here directly rather than widening the shared helper's type.
   get elapsed(): number {
-    const interval = this.running;
-    if (!interval) return 0;
-    if (interval.duration_seconds != null && interval.ended_at != null) {
-      return interval.duration_seconds;
-    }
-    const start = Date.parse(interval.started_at + 'Z');
-    return Math.max(0, Math.floor((this.now - start) / 1000));
+    return this.running ? intervalSeconds(this.running, this.now) : 0;
   }
 
   startTicking() {
