@@ -25,9 +25,9 @@ def current_interval(db: Database, user_id: UUID) -> TinglingInterval | None:
     return TinglingInterval(**row) if row else None
 
 
-def stop(db: Database, user_id: UUID, at: datetime | None = None) -> TinglingInterval | None:
-    at = to_utc_naive(at) if at else now_utc()
-    row = db.query_one(
+def _close_running(db: Database, user_id: UUID, at: datetime) -> dict | None:
+    """Close the user's running interval (bare UPDATE; caller handles recompute/txn)."""
+    return db.query_one(
         """
         UPDATE tingling_sessions
         SET ended_at = ?,
@@ -37,16 +37,22 @@ def stop(db: Database, user_id: UUID, at: datetime | None = None) -> TinglingInt
         """,
         [at, at, user_id],
     )
-    if row is None:
-        return None
-    _recompute_daily_tingling(db, user_id, row["entry_date"])
+
+
+def stop(db: Database, user_id: UUID, at: datetime | None = None) -> TinglingInterval | None:
+    at = to_utc_naive(at) if at else now_utc()
+    with db.cursor():
+        row = _close_running(db, user_id, at)
+        if row is None:
+            return None
+        _recompute_daily_tingling(db, user_id, row["entry_date"])
     return TinglingInterval(**row)
 
 
 def start(db: Database, user_id: UUID, level: Decimal) -> TinglingInterval:
     with db.cursor():
         now = now_utc()
-        stop(db, user_id, now)
+        _close_running(db, user_id, now)
         row = db.query_one(
             """
             INSERT INTO tingling_sessions (user_id, entry_date, level, started_at)
@@ -71,13 +77,14 @@ def day(db: Database, user_id: UUID, entry_date: date) -> DayTingling:
 
 
 def delete_interval(db: Database, user_id: UUID, interval_id: UUID) -> bool:
-    row = db.query_one(
-        "DELETE FROM tingling_sessions WHERE id = ? AND user_id = ? RETURNING entry_date",
-        [interval_id, user_id],
-    )
-    if row is None:
-        return False
-    _recompute_daily_tingling(db, user_id, row["entry_date"])
+    with db.cursor():
+        row = db.query_one(
+            "DELETE FROM tingling_sessions WHERE id = ? AND user_id = ? RETURNING entry_date",
+            [interval_id, user_id],
+        )
+        if row is None:
+            return False
+        _recompute_daily_tingling(db, user_id, row["entry_date"])
     return True
 
 
