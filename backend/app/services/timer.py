@@ -117,6 +117,8 @@ def patch_interval(
     new_posture = posture or existing["posture"]
     new_start = to_utc_naive(started_at) if started_at else existing["started_at"]
     new_end = to_utc_naive(ended_at) if ended_at else existing["ended_at"]
+    if new_end is not None and new_end <= new_start:
+        raise ValueError("End must be after start")
     new_label = label if label_set else existing["label"]
     new_date = local_date(new_start)
     duration = (
