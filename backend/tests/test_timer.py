@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+import pytest
+
 from app.services import timer as service
 from app.services.timeutil import local_date
 
@@ -80,3 +82,34 @@ def test_delete_interval(db, user_id):
     interval = service.start(db, user_id, "sitting", None)
     assert service.delete_interval(db, user_id, interval.id) is True
     assert service.current_interval(db, user_id) is None
+
+
+def test_patch_rejects_end_not_after_start(db, user_id):
+    interval = service.start(db, user_id, "sitting", None)
+    with pytest.raises(ValueError):
+        service.patch_interval(
+            db,
+            user_id,
+            interval.id,
+            posture=None,
+            started_at=datetime(2026, 1, 1, 9, 0, 0),
+            ended_at=datetime(2026, 1, 1, 9, 0, 0),  # equal -> invalid
+            label=None,
+            label_set=False,
+        )
+
+
+def test_patch_sets_and_clears_label(db, user_id):
+    interval = service.start(db, user_id, "sitting", None)
+    with_label = service.patch_interval(
+        db, user_id, interval.id,
+        posture=None, started_at=None, ended_at=None,
+        label="focus", label_set=True,
+    )
+    assert with_label is not None and with_label.label == "focus"
+    cleared = service.patch_interval(
+        db, user_id, interval.id,
+        posture=None, started_at=None, ended_at=None,
+        label=None, label_set=True,
+    )
+    assert cleared is not None and cleared.label is None

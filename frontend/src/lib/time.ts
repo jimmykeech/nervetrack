@@ -126,3 +126,26 @@ export function defaultJabTime(dateISO: string, now: Date = new Date()): string 
   const mm = now.getMinutes().toString().padStart(2, '0');
   return `${hh}:${mm}`;
 }
+
+/** Trim a user-entered interval label; empty/whitespace becomes null (clears it). */
+export function normalizeLabel(input: string | null | undefined): string | null {
+  const s = (input ?? '').trim();
+  return s === '' ? null : s;
+}
+
+/** True when an interval's end is strictly after its start (ISO datetime strings). */
+export function endsAfterStart(startIso: string, endIso: string): boolean {
+  return new Date(endIso).getTime() > new Date(startIso).getTime();
+}
+
+/** Format a UTC-naive ISO string (no zone) as a local datetime-local input value (YYYY-MM-DDTHH:MM). */
+export function utcNaiveToLocalInput(utcNaiveIso: string): string {
+  const d = new Date(utcNaiveIso + 'Z');
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Convert a local datetime-local input value to a UTC-naive ISO string (seconds precision, no zone). */
+export function localInputToUtcNaive(input: string): string {
+  return new Date(input).toISOString().slice(0, 19);
+}

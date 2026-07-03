@@ -2,14 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   combineDateTimeToISO,
   defaultJabTime,
+  endsAfterStart,
   formatDuration,
   formatMinutesish,
   intervalSeconds,
   liveTotals,
+  normalizeLabel,
   parseDurationToMinutes,
   shiftISODate,
   sitStandRatio,
-  todayISO
+  todayISO,
+  utcNaiveToLocalInput,
+  localInputToUtcNaive
 } from './time';
 import type { Interval } from './types';
 
@@ -119,5 +123,37 @@ describe('defaultJabTime', () => {
   it('returns the current local HH:MM for today', () => {
     const now = new Date(2026, 5, 13, 9, 5); // 09:05 local
     expect(defaultJabTime(todayISO(), now)).toBe('09:05');
+  });
+});
+
+describe('normalizeLabel', () => {
+  it('trims non-empty input', () => {
+    expect(normalizeLabel('  work ')).toBe('work');
+  });
+  it('returns null for empty or whitespace', () => {
+    expect(normalizeLabel('')).toBeNull();
+    expect(normalizeLabel('   ')).toBeNull();
+    expect(normalizeLabel(null)).toBeNull();
+  });
+});
+
+describe('endsAfterStart', () => {
+  it('is true when end is after start', () => {
+    expect(endsAfterStart('2026-01-01T09:00:00', '2026-01-01T09:30:00')).toBe(true);
+  });
+  it('is false when end equals or precedes start', () => {
+    expect(endsAfterStart('2026-01-01T09:00:00', '2026-01-01T09:00:00')).toBe(false);
+    expect(endsAfterStart('2026-01-01T09:30:00', '2026-01-01T09:00:00')).toBe(false);
+  });
+});
+
+describe('local/UTC input round-trip', () => {
+  it('round-trips a UTC-naive time through local input form', () => {
+    // Symmetric by construction (both interpret local), so this holds in any TZ.
+    const original = '2026-01-01T09:00:00';
+    expect(localInputToUtcNaive(utcNaiveToLocalInput(original))).toBe(original);
+  });
+  it('produces a minute-precision local input value', () => {
+    expect(utcNaiveToLocalInput('2026-01-01T09:05:00')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
   });
 });

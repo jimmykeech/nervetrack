@@ -43,16 +43,19 @@ def patch_interval(
     user_id: UUID = Depends(current_user),
 ):
     fields = data.model_dump(exclude_unset=True)
-    updated = service.patch_interval(
-        db,
-        user_id,
-        interval_id,
-        posture=data.posture,
-        started_at=data.started_at,
-        ended_at=data.ended_at,
-        label=data.label,
-        label_set="label" in fields,
-    )
+    try:
+        updated = service.patch_interval(
+            db,
+            user_id,
+            interval_id,
+            posture=data.posture,
+            started_at=data.started_at,
+            ended_at=data.ended_at,
+            label=data.label,
+            label_set="label" in fields,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
     if updated is None:
         raise HTTPException(404, "No such interval")
     return updated

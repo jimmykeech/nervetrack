@@ -7,7 +7,13 @@
     formatMinutesish,
     POSTURE_LABEL,
     POSTURES,
-    sitStandRatio
+    sitStandRatio,
+    shiftISODate,
+    todayISO,
+    normalizeLabel,
+    endsAfterStart,
+    utcNaiveToLocalInput,
+    localInputToUtcNaive
   } from '$lib/time';
   import type { Posture } from '$lib/types';
   import RatioBar from '$lib/components/RatioBar.svelte';
@@ -23,6 +29,8 @@
 
   let label = $state('');
   let tingleLevel = $state<number | null>(null);
+  let editErr = $state('');
+  const isToday = $derived(store.date === todayISO());
 
   onMount(() => {
     store.load();
@@ -58,14 +66,39 @@
   }
 
   async function editTime(id: string, field: 'started_at' | 'ended_at', current: string | null) {
-    const initial = current ? new Date(current + 'Z').toISOString().slice(0, 16) : '';
+    editErr = '';
+    const iv = store.intervals.find((x) => x.id === id);
+    const initial = current ? utcNaiveToLocalInput(current) : '';
     const input = prompt(
       `New ${field === 'started_at' ? 'start' : 'end'} time (YYYY-MM-DDTHH:MM)`,
       initial
     );
     if (!input) return;
-    const utc = new Date(input).toISOString().slice(0, 19);
-    await store.editInterval(id, { [field]: utc });
+    const utc = localInputToUtcNaive(input);
+    if (iv) {
+      const start = field === 'started_at' ? utc : iv.started_at;
+      const end = field === 'ended_at' ? utc : iv.ended_at;
+      if (end && !endsAfterStart(start, end)) {
+        editErr = 'End time must be after the start time.';
+        return;
+      }
+    }
+    try {
+      await store.editInterval(id, { [field]: utc });
+    } catch {
+      editErr = 'Could not save the change.';
+    }
+  }
+
+  async function editLabel(id: string, current: string | null) {
+    editErr = '';
+    const input = prompt('Label for this interval (leave empty to clear)', current ?? '');
+    if (input === null) return; // cancelled
+    try {
+      await store.editInterval(id, { label: normalizeLabel(input) });
+    } catch {
+      editErr = 'Could not save the label.';
+    }
   }
 
   const running = $derived(store.running);
@@ -75,38 +108,60 @@
   );
 </script>
 
-<div class="card display" class:running={!!running}>
-  {#if running}
-    <div class="posture">{POSTURE_LABEL[running.posture]}</div>
-    <div class="clock" style="color:{postureColor(running.posture)}">
-      {formatDuration(store.elapsed)}
-    </div>
-    {#if running.label}<div class="muted">{running.label}</div>{/if}
-  {:else}
-    <div class="posture muted">Not tracking</div>
-    <div class="clock muted">00s</div>
-  {/if}
-  {#if nudge}
-    <div class="nudge">You've been sitting for 45+ minutes — consider a stand break.</div>
-  {/if}
+<div class="datebar card">
+  <button onclick={() => store.load(shiftISODate(store.date, -1))} aria-label="previous day"
+    >‹</button
+  >
+  <div class="datepick">
+    <input
+      type="date"
+      value={store.date}
+      max={todayISO()}
+      onchange={(e) => store.load((e.currentTarget as HTMLInputElement).value)}
+    />
+    {#if !isToday}<button class="today" onclick={() => store.load(todayISO())}>Today</button>{/if}
+  </div>
+  <button
+    onclick={() => store.load(shiftISODate(store.date, 1))}
+    aria-label="next day"
+    disabled={store.date >= todayISO()}>›</button
+  >
 </div>
 
-<div class="card">
-  <label>Optional label for next interval</label>
-  <input bind:value={label} placeholder="e.g. work, meeting" />
-  <div class="postures">
-    {#each POSTURES as p}
-      <button
-        class="pbtn {running?.posture === p ? 'active' : ''}"
-        style="--pc:var({postureColorVar(p)})"
-        onclick={() => pick(p)}
-      >
-        {POSTURE_LABEL[p]}
-      </button>
-    {/each}
-    <button class="stop" onclick={stop} disabled={!running}>Stop</button>
+{#if isToday}
+  <div class="card display" class:running={!!running}>
+    {#if running}
+      <div class="posture">{POSTURE_LABEL[running.posture]}</div>
+      <div class="clock" style="color:{postureColor(running.posture)}">
+        {formatDuration(store.elapsed)}
+      </div>
+      {#if running.label}<div class="muted">{running.label}</div>{/if}
+    {:else}
+      <div class="posture muted">Not tracking</div>
+      <div class="clock muted">00s</div>
+    {/if}
+    {#if nudge}
+      <div class="nudge">You've been sitting for 45+ minutes — consider a stand break.</div>
+    {/if}
   </div>
-</div>
+
+  <div class="card">
+    <label>Optional label for next interval</label>
+    <input bind:value={label} placeholder="e.g. work, meeting" />
+    <div class="postures">
+      {#each POSTURES as p}
+        <button
+          class="pbtn {running?.posture === p ? 'active' : ''}"
+          style="--pc:var({postureColorVar(p)})"
+          onclick={() => pick(p)}
+        >
+          {POSTURE_LABEL[p]}
+        </button>
+      {/each}
+      <button class="stop" onclick={stop} disabled={!running}>Stop</button>
+    </div>
+  </div>
+{/if}
 
 <div class="card totals">
   <div class="tgrid">
@@ -121,56 +176,59 @@
   <div style="margin-top: 0.9rem"><RatioBar {totals} showHeader={false} /></div>
 </div>
 
-<div class="card">
-  <h3 style="margin-top: 0">Tingling timer</h3>
-  <div class="card display" class:running={!!tingle.running} style="margin-bottom: 0.75rem">
-    {#if tingle.running}
-      <div class="posture">Tingling · level {tingle.running.level}</div>
-      <div class="clock">{formatDuration(tingle.elapsed)}</div>
-    {:else}
-      <div class="posture muted">Not tracking</div>
-      <div class="clock muted">00s</div>
+{#if isToday}
+  <div class="card">
+    <h3 style="margin-top: 0">Tingling timer</h3>
+    <div class="card display" class:running={!!tingle.running} style="margin-bottom: 0.75rem">
+      {#if tingle.running}
+        <div class="posture">Tingling · level {tingle.running.level}</div>
+        <div class="clock">{formatDuration(tingle.elapsed)}</div>
+      {:else}
+        <div class="posture muted">Not tracking</div>
+        <div class="clock muted">00s</div>
+      {/if}
+    </div>
+    <div class="row" style="align-items: flex-end; gap: 0.75rem">
+      <div class="field" style="margin: 0; max-width: 10rem">
+        <label>Tingling level (0–10)</label>
+        <input type="number" min="0" max="10" step="0.5" bind:value={tingleLevel} />
+      </div>
+      <button
+        class="btn-primary"
+        onclick={startTingle}
+        disabled={tingleLevel === null || !!tingle.running}>Start</button
+      >
+      <button onclick={stopTingle} disabled={!tingle.running}>Stop</button>
+    </div>
+    {#if tingle.intervals.length > 0}
+      <div class="table-scroll" style="margin-top: 0.75rem">
+        <table>
+          <thead>
+            <tr><th>Level</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
+          </thead>
+          <tbody>
+            {#each tingle.intervals as iv}
+              <tr>
+                <td>{iv.level}</td>
+                <td>{fmtTime(iv.started_at)}</td>
+                <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
+                <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
+                <td
+                  ><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button
+                  ></td
+                >
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
     {/if}
   </div>
-  <div class="row" style="align-items: flex-end; gap: 0.75rem">
-    <div class="field" style="margin: 0; max-width: 10rem">
-      <label>Tingling level (0–10)</label>
-      <input type="number" min="0" max="10" step="0.5" bind:value={tingleLevel} />
-    </div>
-    <button
-      class="btn-primary"
-      onclick={startTingle}
-      disabled={tingleLevel === null || !!tingle.running}>Start</button
-    >
-    <button onclick={stopTingle} disabled={!tingle.running}>Stop</button>
-  </div>
-  {#if tingle.intervals.length > 0}
-    <div class="table-scroll" style="margin-top: 0.75rem">
-      <table>
-        <thead>
-          <tr><th>Level</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
-        </thead>
-        <tbody>
-          {#each tingle.intervals as iv}
-            <tr>
-              <td>{iv.level}</td>
-              <td>{fmtTime(iv.started_at)}</td>
-              <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
-              <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-              <td
-                ><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button
-                ></td
-              >
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
-  {/if}
-</div>
+{/if}
 
 <div class="card">
-  <h3 style="margin-top: 0">Today's timeline</h3>
+  <h3 style="margin-top: 0">{isToday ? "Today's timeline" : `Timeline — ${store.date}`}</h3>
+  {#if editErr}<p class="error small">{editErr}</p>{/if}
   {#if store.intervals.length === 0}
     <p class="muted small">No intervals yet. Tap a posture above to start.</p>
   {:else}
@@ -198,11 +256,12 @@
                 {/if}
               </td>
               <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-              <td
-                ><button class="link danger" onclick={() => store.deleteInterval(iv.id)}
+              <td>
+                <button class="link" onclick={() => editLabel(iv.id, iv.label)}>label</button>
+                <button class="link danger" onclick={() => store.deleteInterval(iv.id)}
                   >delete</button
-                ></td
-              >
+                >
+              </td>
             </tr>
           {/each}
         </tbody>
@@ -288,6 +347,21 @@
   .live {
     color: var(--good);
     font-size: 0.85rem;
+  }
+
+  .datebar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .datepick {
+    flex: 1;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .error {
+    color: var(--bad);
   }
 
   @media (max-width: 640px) {
