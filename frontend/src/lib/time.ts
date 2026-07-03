@@ -23,7 +23,10 @@ export function formatMinutesish(totalSeconds: number): string {
 }
 
 /** Elapsed seconds of an interval; if running, measured against `now`. */
-export function intervalSeconds(interval: Interval, now: number = Date.now()): number {
+export function intervalSeconds(
+  interval: { started_at: string; ended_at: string | null; duration_seconds: number | null },
+  now: number = Date.now()
+): number {
   if (interval.duration_seconds != null && interval.ended_at != null) {
     return interval.duration_seconds;
   }

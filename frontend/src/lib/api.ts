@@ -10,6 +10,7 @@ import type {
   DailyEntrySummary,
   DailyStatPoint,
   DayTimer,
+  DayTingling,
   DocumentMeta,
   Exercise,
   Interval,
@@ -20,6 +21,7 @@ import type {
   PatientProfile,
   Posture,
   SessionDetail,
+  TinglingInterval,
   WeeklyDraft,
   WeeklySummary
 } from './types';
@@ -147,6 +149,18 @@ export const api = {
   patchInterval: (id: string, data: Partial<Interval>) =>
     request<Interval>(`/timer/intervals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
   deleteInterval: (id: string) => request(`/timer/intervals/${id}`, { method: 'DELETE' }),
+
+  // Tingling timer
+  startTingling: (level: number) =>
+    request<TinglingInterval>('/tingling/start', {
+      method: 'POST',
+      body: JSON.stringify({ level })
+    }),
+  stopTingling: () => request<TinglingInterval | null>('/tingling/stop', { method: 'POST' }),
+  currentTingling: () => request<TinglingInterval | null>('/tingling/current'),
+  tinglingDay: (date: string) => request<DayTingling>(`/tingling/day/${date}`),
+  deleteTinglingInterval: (id: string) =>
+    request(`/tingling/intervals/${id}`, { method: 'DELETE' }),
 
   // Stats & weekly
   dailyStats: (from?: string, to?: string) => {

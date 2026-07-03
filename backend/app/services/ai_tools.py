@@ -68,6 +68,11 @@ TOOL_SCHEMAS: list[dict] = [
         "parameters": _RANGE,
     }},
     {"type": "function", "function": {
+        "name": "get_tingling_totals",
+        "description": "Per-day tingling: highest level and total minutes over a date range.",
+        "parameters": _RANGE,
+    }},
+    {"type": "function", "function": {
         "name": "get_strengthening_sessions",
         "description": "Strengthening/exercise session logs over a date range.",
         "parameters": _RANGE,
@@ -124,6 +129,8 @@ def dispatch(db: Database, user_id: UUID, name: str, arguments: dict[str, Any]) 
         return timer_service.day(db, user_id, _d(a["date"])).model_dump(mode="json")
     if name == "get_posture_totals":
         return _posture_totals(db, user_id, _d(a["from"]), _d(a["to"]))
+    if name == "get_tingling_totals":
+        return _tingling_totals(db, user_id, _d(a["from"]), _d(a["to"]))
     if name == "get_strengthening_sessions":
         return _sessions(db, user_id, _d(a["from"]), _d(a["to"]))
     if name == "get_stats":
@@ -170,6 +177,21 @@ def _posture_totals(db: Database, user_id: UUID, lo: date, hi: date) -> list[dic
         FROM sit_stand_sessions
         WHERE user_id = ? AND entry_date >= ? AND entry_date <= ? AND ended_at IS NOT NULL
         GROUP BY entry_date, posture
+        ORDER BY entry_date
+        """,
+        [user_id, lo, hi],
+    )
+
+
+def _tingling_totals(db: Database, user_id: UUID, lo: date, hi: date) -> list[dict]:
+    return db.query(
+        """
+        SELECT entry_date,
+               CAST(MAX(level) AS REAL) AS max_level,
+               CAST((COALESCE(SUM(duration_seconds), 0) + 30) / 60 AS INTEGER) AS minutes
+        FROM tingling_sessions
+        WHERE user_id = ? AND entry_date >= ? AND entry_date <= ?
+        GROUP BY entry_date
         ORDER BY entry_date
         """,
         [user_id, lo, hi],
