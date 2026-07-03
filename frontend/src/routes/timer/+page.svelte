@@ -6,7 +6,11 @@
     formatMinutesish,
     POSTURE_LABEL,
     POSTURES,
-    sitStandRatio
+    sitStandRatio,
+    shiftISODate,
+    todayISO,
+    normalizeLabel,
+    endsAfterStart
   } from '$lib/time';
   import type { Posture } from '$lib/types';
   import RatioBar from '$lib/components/RatioBar.svelte';
@@ -20,6 +24,8 @@
   const NUDGE_SECONDS = 45 * 60;
 
   let label = $state('');
+  let editErr = $state('');
+  const isToday = $derived(store.date === todayISO());
 
   onMount(() => {
     store.load();
@@ -42,6 +48,8 @@
   }
 
   async function editTime(id: string, field: 'started_at' | 'ended_at', current: string | null) {
+    editErr = '';
+    const iv = store.intervals.find((x) => x.id === id);
     const initial = current ? new Date(current + 'Z').toISOString().slice(0, 16) : '';
     const input = prompt(
       `New ${field === 'started_at' ? 'start' : 'end'} time (YYYY-MM-DDTHH:MM)`,
@@ -49,7 +57,21 @@
     );
     if (!input) return;
     const utc = new Date(input).toISOString().slice(0, 19);
+    if (iv) {
+      const start = field === 'started_at' ? utc : iv.started_at;
+      const end = field === 'ended_at' ? utc : iv.ended_at;
+      if (end && !endsAfterStart(start, end)) {
+        editErr = 'End time must be after the start time.';
+        return;
+      }
+    }
     await store.editInterval(id, { [field]: utc });
+  }
+
+  async function editLabel(id: string, current: string | null) {
+    const input = prompt('Label for this interval (leave empty to clear)', current ?? '');
+    if (input === null) return; // cancelled
+    await store.editInterval(id, { label: normalizeLabel(input) });
   }
 
   const running = $derived(store.running);
@@ -59,38 +81,60 @@
   );
 </script>
 
-<div class="card display" class:running={!!running}>
-  {#if running}
-    <div class="posture">{POSTURE_LABEL[running.posture]}</div>
-    <div class="clock" style="color:{postureColor(running.posture)}">
-      {formatDuration(store.elapsed)}
-    </div>
-    {#if running.label}<div class="muted">{running.label}</div>{/if}
-  {:else}
-    <div class="posture muted">Not tracking</div>
-    <div class="clock muted">00s</div>
-  {/if}
-  {#if nudge}
-    <div class="nudge">You've been sitting for 45+ minutes — consider a stand break.</div>
-  {/if}
+<div class="datebar card">
+  <button onclick={() => store.load(shiftISODate(store.date, -1))} aria-label="previous day"
+    >‹</button
+  >
+  <div class="datepick">
+    <input
+      type="date"
+      value={store.date}
+      max={todayISO()}
+      onchange={(e) => store.load((e.currentTarget as HTMLInputElement).value)}
+    />
+    {#if !isToday}<button class="today" onclick={() => store.load(todayISO())}>Today</button>{/if}
+  </div>
+  <button
+    onclick={() => store.load(shiftISODate(store.date, 1))}
+    aria-label="next day"
+    disabled={store.date >= todayISO()}>›</button
+  >
 </div>
 
-<div class="card">
-  <label>Optional label for next interval</label>
-  <input bind:value={label} placeholder="e.g. work, meeting" />
-  <div class="postures">
-    {#each POSTURES as p}
-      <button
-        class="pbtn {running?.posture === p ? 'active' : ''}"
-        style="--pc:var({postureColorVar(p)})"
-        onclick={() => pick(p)}
-      >
-        {POSTURE_LABEL[p]}
-      </button>
-    {/each}
-    <button class="stop" onclick={stop} disabled={!running}>Stop</button>
+{#if isToday}
+  <div class="card display" class:running={!!running}>
+    {#if running}
+      <div class="posture">{POSTURE_LABEL[running.posture]}</div>
+      <div class="clock" style="color:{postureColor(running.posture)}">
+        {formatDuration(store.elapsed)}
+      </div>
+      {#if running.label}<div class="muted">{running.label}</div>{/if}
+    {:else}
+      <div class="posture muted">Not tracking</div>
+      <div class="clock muted">00s</div>
+    {/if}
+    {#if nudge}
+      <div class="nudge">You've been sitting for 45+ minutes — consider a stand break.</div>
+    {/if}
   </div>
-</div>
+
+  <div class="card">
+    <label>Optional label for next interval</label>
+    <input bind:value={label} placeholder="e.g. work, meeting" />
+    <div class="postures">
+      {#each POSTURES as p}
+        <button
+          class="pbtn {running?.posture === p ? 'active' : ''}"
+          style="--pc:var({postureColorVar(p)})"
+          onclick={() => pick(p)}
+        >
+          {POSTURE_LABEL[p]}
+        </button>
+      {/each}
+      <button class="stop" onclick={stop} disabled={!running}>Stop</button>
+    </div>
+  </div>
+{/if}
 
 <div class="card totals">
   <div class="tgrid">
@@ -106,7 +150,8 @@
 </div>
 
 <div class="card">
-  <h3 style="margin-top: 0">Today's timeline</h3>
+  <h3 style="margin-top: 0">{isToday ? "Today's timeline" : `Timeline — ${store.date}`}</h3>
+  {#if editErr}<p class="error small">{editErr}</p>{/if}
   {#if store.intervals.length === 0}
     <p class="muted small">No intervals yet. Tap a posture above to start.</p>
   {:else}
@@ -134,11 +179,12 @@
                 {/if}
               </td>
               <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-              <td
-                ><button class="link danger" onclick={() => store.deleteInterval(iv.id)}
+              <td>
+                <button class="link" onclick={() => editLabel(iv.id, iv.label)}>label</button>
+                <button class="link danger" onclick={() => store.deleteInterval(iv.id)}
                   >delete</button
-                ></td
-              >
+                >
+              </td>
             </tr>
           {/each}
         </tbody>
