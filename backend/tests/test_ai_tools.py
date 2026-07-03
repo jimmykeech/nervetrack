@@ -19,7 +19,7 @@ def test_schemas_are_wellformed():
         "list_weeks", "get_week_summary", "get_daily_entry", "get_daily_entries",
         "get_pain_events", "get_timer_day", "get_posture_totals",
         "get_strengthening_sessions", "get_stats", "list_pain_instances",
-        "get_condition_notes", "list_documents",
+        "get_condition_notes", "list_documents", "get_tingling_totals",
     } == names
     for t in ai_tools.TOOL_SCHEMAS:
         assert t["type"] == "function"
@@ -99,3 +99,12 @@ def test_get_daily_entry_returns_json(db, user_id):
     _seed(db, user_id)
     out = ai_tools.dispatch(db, user_id, "get_daily_entry", {"date": "2026-06-23"})
     assert out["status"] == "A"
+
+
+def test_get_tingling_totals_registered_and_dispatches(db, user_id):
+    from app.services import ai_tools
+    names = {t["function"]["name"] for t in ai_tools.TOOL_SCHEMAS}
+    assert "get_tingling_totals" in names
+    # dispatch returns a list (empty is fine) without error
+    out = ai_tools.dispatch(db, user_id, "get_tingling_totals", {"from": "2026-06-01", "to": "2026-06-30"})
+    assert isinstance(out, list)
