@@ -8,7 +8,6 @@
     combineDateTimeToISO,
     defaultJabTime,
     formatMinutesLabel,
-    parseDurationToMinutes,
     shiftISODate,
     todayISO
   } from '$lib/time';
@@ -27,7 +26,7 @@
   let session_intensity = $state<number | null>(null);
   let worst_pain = $state<number | null>(null);
   let tingling_level = $state<number | null>(null);
-  let tingling_text = $state('');
+  let tingling_duration_minutes = $state<number | null>(null);
   let stretches_morning = $state(false);
   let stretches_night = $state(false);
   let iced = $state(false);
@@ -66,7 +65,7 @@
     session_intensity = entry?.session_intensity ?? null;
     worst_pain = entry?.worst_pain ?? null;
     tingling_level = entry?.tingling_level ?? null;
-    tingling_text = formatMinutesLabel(entry?.tingling_duration_minutes ?? null);
+    tingling_duration_minutes = entry?.tingling_duration_minutes ?? null;
     stretches_morning = entry?.stretches_morning ?? false;
     stretches_night = entry?.stretches_night ?? false;
     iced = entry?.iced ?? false;
@@ -94,7 +93,7 @@
       session_intensity,
       worst_pain,
       tingling_level,
-      tingling_duration_minutes: parseDurationToMinutes(tingling_text),
+      tingling_duration_minutes,
       stretches_morning,
       stretches_night,
       iced,
@@ -172,14 +171,10 @@
       />
     </div>
     <div>
-      <Stepper
-        label="Tingling level (0–10)"
-        bind:value={tingling_level}
-        min={0}
-        max={10}
-        step={0.5}
-        onChange={scheduleSave}
-      />
+      <label>Tingling (from the tingling timer)</label>
+      <p class="muted" style="margin: 0.25rem 0 0">
+        Level {tingling_level ?? '—'} · {formatMinutesLabel(tingling_duration_minutes) || '—'}
+      </p>
     </div>
     <div>
       <Stepper
@@ -190,10 +185,6 @@
         step={0.5}
         onChange={scheduleSave}
       />
-    </div>
-    <div>
-      <label>Tingling duration</label>
-      <input placeholder="e.g. 2hrs, 30min" bind:value={tingling_text} oninput={scheduleSave} />
     </div>
   </div>
 </div>
