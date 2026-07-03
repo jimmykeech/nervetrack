@@ -272,6 +272,21 @@
     font-size: 0.85rem;
   }
 
+  .datebar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .datepick {
+    flex: 1;
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .error {
+    color: var(--bad);
+  }
+
   @media (max-width: 640px) {
     .postures {
       grid-template-columns: 1fr;
