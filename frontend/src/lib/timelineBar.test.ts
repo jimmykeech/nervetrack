@@ -67,8 +67,20 @@ describe('intervalToSegment', () => {
 describe('postureSegments', () => {
   it('maps intervals to segments carrying their posture, dropping empties', () => {
     const intervals = [
-      { id: 'a', posture: 'sitting', started_at: '1970-01-01T00:00:00', ended_at: '1970-01-01T06:00:00', duration_seconds: 21600 },
-      { id: 'b', posture: 'standing', started_at: '1970-01-01T06:00:00', ended_at: null, duration_seconds: null }
+      {
+        id: 'a',
+        posture: 'sitting',
+        started_at: '1970-01-01T00:00:00',
+        ended_at: '1970-01-01T06:00:00',
+        duration_seconds: 21600
+      },
+      {
+        id: 'b',
+        posture: 'standing',
+        started_at: '1970-01-01T06:00:00',
+        ended_at: null,
+        duration_seconds: null
+      }
     ] as unknown as Interval[];
     const segs = postureSegments(intervals, DAY0, 12 * H);
     expect(segs.map((s) => s.posture)).toEqual(['sitting', 'standing']);
@@ -80,7 +92,13 @@ describe('postureSegments', () => {
 describe('tinglingSegments', () => {
   it('maps intervals to segments carrying their level', () => {
     const intervals = [
-      { id: 't', level: 6, started_at: '1970-01-01T09:00:00', ended_at: '1970-01-01T10:00:00', duration_seconds: 3600 }
+      {
+        id: 't',
+        level: 6,
+        started_at: '1970-01-01T09:00:00',
+        ended_at: '1970-01-01T10:00:00',
+        duration_seconds: 3600
+      }
     ] as unknown as TinglingInterval[];
     const segs = tinglingSegments(intervals, DAY0, 0);
     expect(segs).toHaveLength(1);

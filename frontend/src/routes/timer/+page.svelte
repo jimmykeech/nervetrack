@@ -271,7 +271,10 @@
               <td>{fmtTime(iv.started_at)}</td>
               <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
               <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-              <td><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button></td>
+              <td
+                ><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button
+                ></td
+              >
             </tr>
           {/each}
         </tbody>
