@@ -52,7 +52,7 @@ totals), which shows how much time, not when.
 | 4 | 24-hour timeline bar | always (any viewed day) |
 | 5 | Posture totals (4-up grid + Sit:Stand + `RatioBar`) | always |
 | 6 | Posture interval table ("Today's timeline" / "Timeline — {date}") | always |
-| 7 | Tingling interval table | today only, when it has rows |
+| 7 | Tingling interval table | any viewed day, when it has rows |
 
 The combined display and merged controls remain gated on `isToday`, exactly as
 the posture display and controls are today. The timeline bar renders for any
@@ -142,8 +142,9 @@ cases unit-testable without a DOM, matching how `ratio.ts` is tested.
 - The **posture interval table** is unchanged (edit time / label / delete).
 - The **tingling interval table** moves out of the (now-removed) tingling
   section to the bottom of the page. Its content and handlers (`tingle.remove`,
-  time formatting) are unchanged. It shows today-only and only when it has rows,
-  as today.
+  time formatting) are unchanged. It shows for any viewed day when it has rows,
+  consistent with the posture interval table (which already renders for any
+  day), since date navigation now loads the tingling store per-day.
 
 ## Data flow
 
