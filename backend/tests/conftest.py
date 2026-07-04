@@ -27,6 +27,14 @@ def _cookie_auth_mode(monkeypatch):
     # honours the cookie exactly like the old behaviour. none/google tests
     # override this in their own fixtures.
     monkeypatch.setenv("NERVETRACK_AUTH_MODE", "password")
+    # Pin the local timezone to UTC regardless of the developer's real .env.
+    # Importing app.main pulls in litellm, whose __init__ calls python-dotenv's
+    # load_dotenv() with no args; find_dotenv() then walks up from cwd and loads
+    # the repo-root .env (meant for docker-compose) into this process's real
+    # os.environ — e.g. NERVETRACK_TIMEZONE=Australia/Sydney on this machine.
+    # That pollution happens once at import time, before any fixture runs, so it
+    # must be overridden per-test rather than merely left unset.
+    monkeypatch.setenv("NERVETRACK_TIMEZONE", "UTC")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
