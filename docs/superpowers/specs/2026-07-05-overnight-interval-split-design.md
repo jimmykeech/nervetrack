@@ -174,13 +174,17 @@ tingling rows, recompute `_recompute_daily_tingling` for every touched `entry_da
 Running rows (`ended_at IS NULL`) are left alone — they are handled live by the read
 path. The whole pass runs in a transaction.
 
-### 7. Frontend table clamp — `frontend/src/routes/timer/+page.svelte`
+### 7. No frontend change (running interval returned as a per-day clamped virtual)
 
-In the posture interval table (and the tingling interval table), when a row's
-`started_at` is before the viewed day's local midnight, display the start as `00:00`
-instead of the real (previous-day) time. The bar is unchanged (already clamps). End
-still shows `running` for the live interval. This is display-only; edits still act on
-the real stored row.
+Refined during planning: rather than a frontend clamp, `day` (and the tingling
+equivalent) return the running interval as a **per-day clamped virtual** `Interval` —
+`started_at` clamped to the queried day's local midnight; for the current day
+`ended_at`/`duration_seconds` stay `null` (still running), for an earlier day within
+the span they are clamped to the day end. Because the frontend computes its bar,
+table, and client-side `liveTotals` from those `started_at`/`ended_at` values, all
+three become correct and the table start shows `00:00` — with **no frontend change**.
+The `timelineBar.ts` clamp remains a harmless no-op. Editing still acts on the real
+stored running row (uncommon from a non-start day; accepted).
 
 ## Data flow
 
@@ -244,6 +248,7 @@ single `entry_date`, which is the invariant they already assume.
 - `backend/app/db.py` (or `main.py` startup) — invoke the idempotent backfill once.
 - `backend/app/services/backfill_overnight.py` — new one-time backfill routine.
 - Backend tests for the above.
-- `frontend/src/routes/timer/+page.svelte` — table start-time clamp.
+- No frontend files change — the running interval is returned as a per-day clamped
+  virtual (see §7), which the existing frontend renders correctly.
 
 No changes to `stats.py`, `weekly.py`, or `ai_tools.py`.
