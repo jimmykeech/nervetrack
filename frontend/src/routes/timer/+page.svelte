@@ -17,6 +17,7 @@
   } from '$lib/time';
   import type { Posture } from '$lib/types';
   import RatioBar from '$lib/components/RatioBar.svelte';
+  import TimelineBar from '$lib/components/TimelineBar.svelte';
   import { postureColor, POSTURE_META } from '$lib/posture';
 
   function postureColorVar(p: Posture): string {
@@ -42,6 +43,10 @@
     store.stopTicking();
     tingle.stopTicking();
   });
+
+  async function loadDay(date: string) {
+    await Promise.all([store.load(date), tingle.load(date)]);
+  }
 
   async function pick(posture: Posture) {
     await store.switchTo(posture, label.trim() || undefined);
@@ -109,20 +114,18 @@
 </script>
 
 <div class="datebar card">
-  <button onclick={() => store.load(shiftISODate(store.date, -1))} aria-label="previous day"
-    >‹</button
-  >
+  <button onclick={() => loadDay(shiftISODate(store.date, -1))} aria-label="previous day">‹</button>
   <div class="datepick">
     <input
       type="date"
       value={store.date}
       max={todayISO()}
-      onchange={(e) => store.load((e.currentTarget as HTMLInputElement).value)}
+      onchange={(e) => loadDay((e.currentTarget as HTMLInputElement).value)}
     />
-    {#if !isToday}<button class="today" onclick={() => store.load(todayISO())}>Today</button>{/if}
+    {#if !isToday}<button class="today" onclick={() => loadDay(todayISO())}>Today</button>{/if}
   </div>
   <button
-    onclick={() => store.load(shiftISODate(store.date, 1))}
+    onclick={() => loadDay(shiftISODate(store.date, 1))}
     aria-label="next day"
     disabled={store.date >= todayISO()}>›</button
   >
@@ -139,6 +142,14 @@
     {:else}
       <div class="posture muted">Not tracking</div>
       <div class="clock muted">00s</div>
+    {/if}
+    {#if tingle.running}
+      <div class="tingle-divider"></div>
+      <div class="tingle-line">
+        <span class="tingle-tag">Tingling</span>
+        <span class="tingle-clock">{formatDuration(tingle.elapsed)}</span>
+        <span class="tingle-lvl">· level {tingle.running.level}</span>
+      </div>
     {/if}
     {#if nudge}
       <div class="nudge">You've been sitting for 45+ minutes — consider a stand break.</div>
@@ -160,8 +171,33 @@
       {/each}
       <button class="stop" onclick={stop} disabled={!running}>Stop</button>
     </div>
+
+    <div class="tingle-controls">
+      <div class="tingle-caption"><span class="tingle-dot"></span>Tingling timer</div>
+      <div class="row" style="align-items: flex-end; gap: 0.75rem">
+        <div class="field" style="margin: 0; max-width: 8rem">
+          <label>Level (0–10)</label>
+          <input type="number" min="0" max="10" step="0.5" bind:value={tingleLevel} />
+        </div>
+        <button
+          class="btn-primary"
+          onclick={startTingle}
+          disabled={tingleLevel === null || !!tingle.running}>Start</button
+        >
+        <button onclick={stopTingle} disabled={!tingle.running}>Stop</button>
+      </div>
+    </div>
   </div>
 {/if}
+
+<div class="card">
+  <TimelineBar
+    intervals={store.intervals}
+    tingling={tingle.intervals}
+    date={store.date}
+    now={store.now}
+  />
+</div>
 
 <div class="card totals">
   <div class="tgrid">
@@ -175,56 +211,6 @@
   <div class="ratio">Sit : Stand = <strong>{sitStandRatio(totals)}</strong></div>
   <div style="margin-top: 0.9rem"><RatioBar {totals} showHeader={false} /></div>
 </div>
-
-{#if isToday}
-  <div class="card">
-    <h3 style="margin-top: 0">Tingling timer</h3>
-    <div class="card display" class:running={!!tingle.running} style="margin-bottom: 0.75rem">
-      {#if tingle.running}
-        <div class="posture">Tingling · level {tingle.running.level}</div>
-        <div class="clock">{formatDuration(tingle.elapsed)}</div>
-      {:else}
-        <div class="posture muted">Not tracking</div>
-        <div class="clock muted">00s</div>
-      {/if}
-    </div>
-    <div class="row" style="align-items: flex-end; gap: 0.75rem">
-      <div class="field" style="margin: 0; max-width: 10rem">
-        <label>Tingling level (0–10)</label>
-        <input type="number" min="0" max="10" step="0.5" bind:value={tingleLevel} />
-      </div>
-      <button
-        class="btn-primary"
-        onclick={startTingle}
-        disabled={tingleLevel === null || !!tingle.running}>Start</button
-      >
-      <button onclick={stopTingle} disabled={!tingle.running}>Stop</button>
-    </div>
-    {#if tingle.intervals.length > 0}
-      <div class="table-scroll" style="margin-top: 0.75rem">
-        <table>
-          <thead>
-            <tr><th>Level</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
-          </thead>
-          <tbody>
-            {#each tingle.intervals as iv}
-              <tr>
-                <td>{iv.level}</td>
-                <td>{fmtTime(iv.started_at)}</td>
-                <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
-                <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
-                <td
-                  ><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button
-                  ></td
-                >
-              </tr>
-            {/each}
-          </tbody>
-        </table>
-      </div>
-    {/if}
-  </div>
-{/if}
 
 <div class="card">
   <h3 style="margin-top: 0">{isToday ? "Today's timeline" : `Timeline — ${store.date}`}</h3>
@@ -270,6 +256,30 @@
   {/if}
 </div>
 
+{#if tingle.intervals.length > 0}
+  <div class="card">
+    <h3 style="margin-top: 0">Tingling intervals</h3>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Level</th><th>Start</th><th>End</th><th>Duration</th><th></th></tr>
+        </thead>
+        <tbody>
+          {#each tingle.intervals as iv}
+            <tr>
+              <td>{iv.level}</td>
+              <td>{fmtTime(iv.started_at)}</td>
+              <td>{iv.ended_at ? fmtTime(iv.ended_at) : 'running'}</td>
+              <td>{iv.duration_seconds != null ? formatMinutesish(iv.duration_seconds) : '—'}</td>
+              <td><button class="link danger" onclick={() => tingle.remove(iv.id)}>delete</button></td>
+            </tr>
+          {/each}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{/if}
+
 <style>
   .display {
     text-align: center;
@@ -293,6 +303,53 @@
     margin-top: 0.75rem;
     color: var(--caution);
     font-weight: 600;
+  }
+  .tingle-divider {
+    height: 1px;
+    background: var(--border);
+    width: 78%;
+    margin: 0.95rem auto 0.8rem;
+  }
+  .tingle-line {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 0.5rem;
+  }
+  .tingle-tag {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--tingle);
+    font-weight: 700;
+  }
+  .tingle-clock {
+    font-size: 1.5rem;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+  }
+  .tingle-lvl {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .tingle-controls {
+    margin-top: 1rem;
+    padding-top: 0.95rem;
+    border-top: 1px dashed var(--border);
+  }
+  .tingle-caption {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .tingle-dot {
+    width: 0.6rem;
+    height: 0.6rem;
+    border-radius: 50%;
+    background: var(--tingle);
   }
   .postures {
     display: grid;
