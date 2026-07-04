@@ -160,3 +160,28 @@ def test_start_splits_previous_overnight_interval(db, user_id):
     postures = sorted(r["posture"] for r in rows)
     assert postures == ["lying", "lying", "sitting"]
     assert service.current_interval(db, user_id).id == new_iv.id
+
+
+def test_posture_totals_clip_running_overnight_to_each_day(db, user_id, monkeypatch):
+    monkeypatch.setattr("app.services.timer.now_utc", lambda: datetime(2026, 6, 14, 7, 0))
+    _insert_running(db, user_id, "lying", datetime(2026, 6, 13, 22, 0), date(2026, 6, 13))
+    assert service.posture_totals(db, user_id, date(2026, 6, 13))["lying"] == 7200
+    assert service.posture_totals(db, user_id, date(2026, 6, 14))["lying"] == 25200
+
+
+def test_day_returns_running_overnight_clipped_per_day(db, user_id, monkeypatch):
+    monkeypatch.setattr("app.services.timer.now_utc", lambda: datetime(2026, 6, 14, 7, 0))
+    _insert_running(db, user_id, "lying", datetime(2026, 6, 13, 22, 0), date(2026, 6, 13))
+
+    today = service.day(db, user_id, date(2026, 6, 14))
+    assert today.running is not None
+    assert today.running.started_at == datetime(2026, 6, 14, 0, 0)  # clamped to midnight
+    assert today.running.ended_at is None  # still running today
+    assert today.totals.lying == 25200
+
+    prev = service.day(db, user_id, date(2026, 6, 13))
+    assert prev.running is None  # not the current day
+    seg = next(i for i in prev.intervals if i.posture == "lying")
+    assert seg.started_at == datetime(2026, 6, 13, 22, 0)
+    assert seg.ended_at == datetime(2026, 6, 14, 0, 0)  # clamped to day end
+    assert prev.totals.lying == 7200

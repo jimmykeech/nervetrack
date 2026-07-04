@@ -15,13 +15,6 @@ from app.models.timer import DayTimer, Interval
 from app.services.interval_split import DaySegment, day_segments
 from app.services.timeutil import local_date, local_tz, now_utc, to_utc_naive
 
-# Live duration for an interval: stored seconds once stopped, else elapsed-so-far.
-# julianday() parses ISO-8601 text and treats naive timestamps as UTC, matching now_utc().
-_LIVE_SECONDS = (
-    "COALESCE(duration_seconds, "
-    "CAST((julianday('now') - julianday(started_at)) * 86400 AS INTEGER))"
-)
-
 
 def _rewrite_as_segments(
     db: Database,
@@ -104,30 +97,61 @@ def start(db: Database, user_id: UUID, posture: str, label: str | None) -> Inter
     return Interval(**row)
 
 
+def _running_segment(
+    db: Database, user_id: UUID, entry_date: date
+) -> tuple[Interval, DaySegment] | None:
+    """The running interval and its segment for ``entry_date`` (or None)."""
+    running = current_interval(db, user_id)
+    if running is None:
+        return None
+    for seg in day_segments(running.started_at, now_utc(), local_tz()):
+        if seg.entry_date == entry_date:
+            return running, seg
+    return None
+
+
 def day(db: Database, user_id: UUID, entry_date: date) -> DayTimer:
+    from app.models.postures import PostureTotals
+
     rows = db.query(
-        "SELECT * FROM sit_stand_sessions WHERE user_id = ? AND entry_date = ? ORDER BY started_at",
+        "SELECT * FROM sit_stand_sessions WHERE user_id = ? AND entry_date = ? "
+        "AND ended_at IS NOT NULL ORDER BY started_at",
         [user_id, entry_date],
     )
     intervals = [Interval(**r) for r in rows]
+    running_field: Interval | None = None
+    seg_pair = _running_segment(db, user_id, entry_date)
+    if seg_pair is not None:
+        interval, seg = seg_pair
+        is_current_day = seg.entry_date == local_date(now_utc())
+        virtual = Interval(
+            id=interval.id,
+            entry_date=entry_date,
+            posture=interval.posture,
+            started_at=seg.started_at,
+            ended_at=None if is_current_day else seg.ended_at,
+            duration_seconds=None if is_current_day else seg.duration_seconds,
+            label=interval.label,
+        )
+        intervals.append(virtual)
+        if is_current_day:
+            running_field = virtual
+    intervals.sort(key=lambda i: i.started_at)
     totals = posture_totals(db, user_id, entry_date)
-    running = next((i for i in intervals if i.ended_at is None), None)
-    from app.models.postures import PostureTotals
-
     return DayTimer(
         entry_date=entry_date,
         intervals=intervals,
         totals=PostureTotals(**totals),
-        running=running,
+        running=running_field,
     )
 
 
 def posture_totals(db: Database, user_id: UUID, entry_date: date) -> dict[str, int]:
     rows = db.query(
-        f"""
-        SELECT posture, CAST(SUM({_LIVE_SECONDS}) AS INTEGER) AS secs
+        """
+        SELECT posture, CAST(SUM(duration_seconds) AS INTEGER) AS secs
         FROM sit_stand_sessions
-        WHERE user_id = ? AND entry_date = ?
+        WHERE user_id = ? AND entry_date = ? AND ended_at IS NOT NULL
         GROUP BY posture
         """,
         [user_id, entry_date],
@@ -135,6 +159,10 @@ def posture_totals(db: Database, user_id: UUID, entry_date: date) -> dict[str, i
     totals = {"sitting": 0, "standing": 0, "lying": 0, "walking": 0}
     for r in rows:
         totals[r["posture"]] = int(r["secs"] or 0)
+    running = _running_segment(db, user_id, entry_date)
+    if running is not None:
+        interval, seg = running
+        totals[interval.posture] += seg.duration_seconds
     return totals
 
 
