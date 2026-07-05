@@ -24,6 +24,7 @@ from app.routers import (
     tingling,
     weekly,
 )
+from app.services.backfill_overnight import backfill_overnight
 
 API_PREFIX = "/api/v1"
 
@@ -31,7 +32,8 @@ API_PREFIX = "/api/v1"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
-    init_db(settings.db_path)
+    db = init_db(settings.db_path)
+    backfill_overnight(db)
     yield
 
 

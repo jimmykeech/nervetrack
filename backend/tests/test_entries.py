@@ -191,6 +191,19 @@ def test_delete_tagged_pain_event_does_not_violate_fk(db, user_id):
     assert service.delete_pain_event(db, user_id, ev.id) is True
 
 
+def test_today_entry_counts_running_overnight_interval(db, user_id, monkeypatch):
+    monkeypatch.setattr("app.services.timer.now_utc", lambda: datetime(2026, 6, 14, 7, 0))
+    db.execute(
+        "INSERT INTO sit_stand_sessions (user_id, entry_date, posture, started_at) "
+        "VALUES (?, ?, ?, ?)",
+        [user_id, date(2026, 6, 13), "lying", datetime(2026, 6, 13, 22, 0)],
+    )
+    service.ensure_entry(db, user_id, date(2026, 6, 14))
+    entry = service.get_entry(db, user_id, date(2026, 6, 14))
+    assert entry.timer_totals.lying == 25200
+    assert any(i.started_at == datetime(2026, 6, 14, 0, 0) for i in entry.timer_intervals)
+
+
 def test_api_pain_event_tagging(auth_client):
     created = auth_client.post("/api/v1/pain-instances", json={"name": "Left sciatic"})
     iid = created.json()["id"]
