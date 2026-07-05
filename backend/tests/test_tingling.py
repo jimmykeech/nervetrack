@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from pydantic import ValidationError
 
 from app.models.tingling import TinglingStart
+from app.services import tingling as service
 
 
 def test_tingling_table_exists(db, user_id):
@@ -102,3 +103,41 @@ def test_start_recomputes_previous_day_when_crossing_midnight(db, user_id):
     assert prev is not None
     assert prev.tingling_duration_minutes is not None  # prior day was recomputed, not left stale
     assert int(prev.tingling_level) == 5
+
+
+def _insert_running_tingling(db, user_id, level, started_at, entry_date):
+    return db.query_one(
+        "INSERT INTO tingling_sessions (user_id, entry_date, level, started_at) "
+        "VALUES (?, ?, ?, ?) RETURNING *",
+        [user_id, entry_date, level, started_at],
+    )
+
+
+def test_tingling_stop_splits_overnight_and_recomputes_each_day(db, user_id):
+    _insert_running_tingling(db, user_id, 5, datetime(2026, 6, 13, 22, 0), date(2026, 6, 13))
+    service.stop(db, user_id, at=datetime(2026, 6, 14, 7, 0))
+    rows = db.query(
+        "SELECT entry_date, duration_seconds FROM tingling_sessions WHERE user_id = ? "
+        "ORDER BY entry_date", [user_id]
+    )
+    assert [r["entry_date"] for r in rows] == [date(2026, 6, 13), date(2026, 6, 14)]
+    assert [r["duration_seconds"] for r in rows] == [7200, 25200]
+    d13 = db.query_one(
+        "SELECT tingling_duration_minutes FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+        [user_id, date(2026, 6, 13)],
+    )
+    d14 = db.query_one(
+        "SELECT tingling_duration_minutes FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+        [user_id, date(2026, 6, 14)],
+    )
+    assert d13["tingling_duration_minutes"] == 120  # 7200s
+    assert d14["tingling_duration_minutes"] == 420  # 25200s
+
+
+def test_tingling_day_clips_running_overnight(db, user_id, monkeypatch):
+    monkeypatch.setattr("app.services.tingling.now_utc", lambda: datetime(2026, 6, 14, 7, 0))
+    _insert_running_tingling(db, user_id, 5, datetime(2026, 6, 13, 22, 0), date(2026, 6, 13))
+    today = service.day(db, user_id, date(2026, 6, 14))
+    assert today.running is not None
+    assert today.running.started_at == datetime(2026, 6, 14, 0, 0)
+    assert today.running.ended_at is None
