@@ -13,6 +13,7 @@ import type {
   DayTingling,
   DocumentMeta,
   Exercise,
+  ExerciseLog,
   Interval,
   LlmSettings,
   LlmSettingsIn,
@@ -129,6 +130,7 @@ export const api = {
   latestSession: () => request<SessionDetail | null>('/sessions/latest'),
   progression: (exerciseId: string) =>
     request<Record<string, unknown>[]>(`/exercises/${exerciseId}/progression`),
+  lastLogs: () => request<Record<string, Partial<ExerciseLog>>>('/exercises/last-logs'),
 
   // Pain instances
   listPainInstances: () => request<PainInstance[]>('/pain-instances'),
