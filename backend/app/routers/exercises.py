@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.auth import current_user
 from app.deps import db_dep
 from app.models.exercises import Exercise, ExerciseCreate, ExercisePatch
+from app.services import sessions as sessions_service
 
 router = APIRouter(tags=["exercises"])
 
@@ -51,6 +52,11 @@ def create_exercise(
         [user_id, data.name, order],
     )
     return Exercise(**created)
+
+
+@router.get("/exercises/last-logs")
+def last_logs(db=Depends(db_dep), user_id: UUID = Depends(current_user)):
+    return sessions_service.last_logs(db, user_id)
 
 
 @router.patch("/exercises/{exercise_id}", response_model=Exercise)
