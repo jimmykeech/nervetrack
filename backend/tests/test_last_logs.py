@@ -66,7 +66,11 @@ def test_last_logs_omits_never_logged_and_is_user_scoped(db, user_id, make_user)
 
 def test_last_logs_deterministic_tiebreaker_on_equal_performed_at(db, user_id):
     """When two sessions have same exercise and same performed_at,
-    the newer-inserted row (larger el.id) wins."""
+    the newer-inserted row (larger rowid) wins deterministically.
+
+    exercise_logs.id is a random UUID, so insertion order is tracked by
+    SQLite's implicit rowid, not by id — hence the tiebreaker uses rowid.
+    """
     from uuid import UUID
 
     names = [r["name"] for r in db.query("SELECT name FROM exercises WHERE user_id = ? ORDER BY sort_order LIMIT 1", [user_id])]
@@ -85,5 +89,5 @@ def test_last_logs_deterministic_tiebreaker_on_equal_performed_at(db, user_id):
 
     result = service.last_logs(db, user_id)
 
-    # The second-created log (sets=2, larger id) should win on the tiebreaker.
+    # The second-created log (sets=2, larger rowid) should win on the tiebreaker.
     assert result[a]["sets"] == 2
