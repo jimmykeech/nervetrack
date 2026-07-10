@@ -220,7 +220,7 @@ def last_logs(db: Database, user_id: UUID) -> dict[str, dict]:
         FROM (
             SELECT el.*,
                    ROW_NUMBER() OVER (PARTITION BY el.exercise_id
-                                      ORDER BY s.performed_at DESC) AS rn
+                                      ORDER BY s.performed_at DESC, el.id DESC) AS rn
             FROM exercise_logs el
             JOIN strength_sessions s ON s.id = el.session_id
             JOIN daily_entries d     ON d.id = s.daily_entry_id

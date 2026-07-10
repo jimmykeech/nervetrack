@@ -62,3 +62,28 @@ def test_last_logs_omits_never_logged_and_is_user_scoped(db, user_id, make_user)
     result = service.last_logs(db, user_id)
     assert a not in result          # user_id logged nothing
     assert other_a not in result    # other user's log never leaks
+
+
+def test_last_logs_deterministic_tiebreaker_on_equal_performed_at(db, user_id):
+    """When two sessions have same exercise and same performed_at,
+    the newer-inserted row (larger el.id) wins."""
+    from uuid import UUID
+
+    names = [r["name"] for r in db.query("SELECT name FROM exercises WHERE user_id = ? ORDER BY sort_order LIMIT 1", [user_id])]
+    a = _exercise_id(db, user_id, names[0])
+
+    # Create two sessions on the same day with the same performed_at,
+    # but different sets to distinguish them.
+    same_time = datetime(2026, 6, 1, 9, tzinfo=UTC)
+
+    _add_session(db, user_id, date(2026, 6, 1),
+                 [ExerciseLogIn(exercise_id=UUID(a), sets=1, reps=8)],
+                 same_time)
+    _add_session(db, user_id, date(2026, 6, 1),
+                 [ExerciseLogIn(exercise_id=UUID(a), sets=2, reps=8)],
+                 same_time)
+
+    result = service.last_logs(db, user_id)
+
+    # The second-created log (sets=2, larger id) should win on the tiebreaker.
+    assert result[a]["sets"] == 2
