@@ -2,6 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import type { Status, WeeklySummary } from '$lib/types';
+  import { renderMarkdown } from '$lib/markdown';
 
   let weeks = $state<WeeklySummary[]>([]);
   let selected = $state<WeeklySummary | null>(null);
@@ -11,6 +12,8 @@
   let editNext = $state('');
   let drafting = $state(false);
   let message = $state('');
+  let editingObs = $state(false);
+  let editingNext = $state(false);
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
   const statusClass: Record<string, string> = { G: 'status-G', A: 'status-A', R: 'status-R' };
@@ -27,6 +30,8 @@
     editObs = w.key_observations ?? '';
     editTrend = w.trend_vs_last_week ?? '';
     editNext = w.next_steps ?? '';
+    editingObs = false;
+    editingNext = false;
     message = '';
   }
 
@@ -51,6 +56,8 @@
       const d = await api.weeklyDraft(selected.week_start);
       editObs = d.key_observations;
       editNext = d.next_steps;
+      editingObs = false;
+      editingNext = false;
       message = 'Draft ready — review and Save.';
     } catch (e) {
       message = (e as Error).message.startsWith('409')
@@ -146,12 +153,37 @@
       </button>
     </div>
     <div class="field">
-      <label>Key observations</label>
-      <textarea bind:value={editObs} rows="6" placeholder="What stood out this week…"></textarea>
+      <div class="fieldhead">
+        <label>Key observations</label>
+        {#if editObs && !editingObs}
+          <button class="link" onclick={() => (editingObs = true)}>✎ Edit</button>
+        {:else if editingObs}
+          <button class="link" onclick={() => (editingObs = false)}>Done</button>
+        {/if}
+      </div>
+      {#if editObs && !editingObs}
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+        <div class="markdown rendered">{@html renderMarkdown(editObs)}</div>
+      {:else}
+        <textarea bind:value={editObs} rows="6" placeholder="What stood out this week…"></textarea>
+      {/if}
     </div>
     <div class="field">
-      <label>Next steps</label>
-      <textarea bind:value={editNext} rows="4" placeholder="Plan for the upcoming week…"></textarea>
+      <div class="fieldhead">
+        <label>Next steps</label>
+        {#if editNext && !editingNext}
+          <button class="link" onclick={() => (editingNext = true)}>✎ Edit</button>
+        {:else if editingNext}
+          <button class="link" onclick={() => (editingNext = false)}>Done</button>
+        {/if}
+      </div>
+      {#if editNext && !editingNext}
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+        <div class="markdown rendered">{@html renderMarkdown(editNext)}</div>
+      {:else}
+        <textarea bind:value={editNext} rows="4" placeholder="Plan for the upcoming week…"
+        ></textarea>
+      {/if}
     </div>
     <button class="status-G" onclick={save}>Save</button>
     {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
@@ -196,5 +228,47 @@
     .metrics {
       grid-template-columns: 1fr;
     }
+  }
+  .fieldhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .link {
+    border: none;
+    background: none;
+    color: var(--text-muted);
+    padding: 0;
+    font-size: 0.85rem;
+  }
+  .rendered {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.5rem 0.75rem;
+    background: var(--surface-2);
+  }
+  .markdown :global(> :first-child) {
+    margin-top: 0;
+  }
+  .markdown :global(> :last-child) {
+    margin-bottom: 0;
+  }
+  .markdown :global(h1),
+  .markdown :global(h2),
+  .markdown :global(h3) {
+    margin: 0.6rem 0 0.3rem;
+    line-height: 1.25;
+  }
+  .markdown :global(p),
+  .markdown :global(ul),
+  .markdown :global(ol) {
+    margin: 0.4rem 0;
+  }
+  .markdown :global(ul),
+  .markdown :global(ol) {
+    padding-left: 1.25rem;
+  }
+  .markdown :global(li) {
+    margin: 0.15rem 0;
   }
 </style>
