@@ -11,7 +11,9 @@
   let intensity = $state<number | null>(null);
   let sessionNotes = $state('');
   let rows = $state<Record<string, ExerciseLog>>({});
-  let included = $state<Record<string, boolean>>({});
+  let added = $state<string[]>([]);
+  let lastLogs = $state<Record<string, Partial<ExerciseLog>>>({});
+  let toAdd = $state('');
   let saved = $state<SessionDetail | null>(null);
   let message = $state('');
   let sessionInstanceIds = $state<string[]>([]);
@@ -43,21 +45,14 @@
 
   async function load() {
     exercises = (await api.listExercises()).filter((e) => e.active);
-    const fresh: Record<string, ExerciseLog> = {};
-    for (const e of exercises) fresh[e.id] = blankRow(e.id);
-    rows = fresh;
-    // Prefill from the most recent session ("same as last time" workflow).
-    const last = await api.latestSession();
-    if (last) {
-      intensity = last.intensity;
-      sessionInstanceIds = last.instance_ids;
-      for (const log of last.logs) {
-        if (rows[log.exercise_id]) {
-          rows[log.exercise_id] = { ...log, id: undefined };
-          included[log.exercise_id] = true;
-        }
-      }
-    }
+    lastLogs = await api.lastLogs();
+    // Fresh slate every time: no prefilled exercises, intensity, notes, or tags.
+    rows = {};
+    added = [];
+    toAdd = '';
+    intensity = null;
+    sessionNotes = '';
+    sessionInstanceIds = [];
   }
 
   onMount(load);
@@ -67,8 +62,26 @@
     return n.includes('plank') || n.includes('hold');
   }
 
+  function addExerciseToSession(id: string) {
+    if (!id || added.includes(id)) return;
+    rows[id] = { ...blankRow(id), ...(lastLogs[id] ?? {}) };
+    added = [...added, id];
+    toAdd = '';
+  }
+
+  function removeFromSession(id: string) {
+    added = added.filter((x) => x !== id);
+    delete rows[id];
+  }
+
+  function exerciseName(id: string): string {
+    return exercises.find((e) => e.id === id)?.name ?? '';
+  }
+
+  const availableToAdd = $derived(exercises.filter((e) => !added.includes(e.id)));
+
   async function saveSession() {
-    const logs = exercises.filter((e) => included[e.id]).map((e) => rows[e.id]);
+    const logs = added.map((id) => rows[id]);
     saved = await api.createSession(date, {
       intensity,
       notes: sessionNotes || null,
@@ -136,57 +149,69 @@
 
 <div class="card">
   <h3 style="margin-top: 0">Log session</h3>
-  <p class="muted small">Prefilled from your last session. Tick the exercises you did.</p>
+  <p class="muted small">
+    Add each exercise as you do it — inputs prefill from the last time you logged it.
+  </p>
+  {#if availableToAdd.length}
+    <div class="row picker">
+      <select bind:value={toAdd} style="flex: 1">
+        <option value="">Choose an exercise…</option>
+        {#each availableToAdd as e}<option value={e.id}>{e.name}</option>{/each}
+      </select>
+      <button onclick={() => addExerciseToSession(toAdd)} disabled={!toAdd}>+ Add</button>
+    </div>
+  {:else}
+    <p class="muted small">All exercises added.</p>
+  {/if}
   <div class="rows">
-    {#each exercises as e}
-      <div class="exrow" class:on={included[e.id]}>
-        <label class="exname">
-          <input type="checkbox" bind:checked={included[e.id]} />
-          {e.name}
-        </label>
-        {#if included[e.id]}
-          <div class="inputs">
-            <span><label>Sets</label><input type="number" bind:value={rows[e.id].sets} /></span>
-            {#if isTimeBased(e.name)}
-              <span
-                ><label>Hold (s)</label><input
-                  type="number"
-                  bind:value={rows[e.id].hold_seconds}
-                /></span
-              >
-            {:else}
-              <span><label>Reps</label><input type="number" bind:value={rows[e.id].reps} /></span>
-            {/if}
+    {#each added as id (id)}
+      {@const name = exerciseName(id)}
+      <div class="exrow on">
+        <div class="exhead">
+          <span class="exname">{name}</span>
+          <button class="link" onclick={() => removeFromSession(id)}>✕ remove</button>
+        </div>
+        <div class="inputs">
+          <span><label>Sets</label><input type="number" bind:value={rows[id].sets} /></span>
+          {#if isTimeBased(name)}
             <span
-              ><label>Weight (kg)</label><input
+              ><label>Hold (s)</label><input
                 type="number"
-                step="0.5"
-                bind:value={rows[e.id].weight_kg}
+                bind:value={rows[id].hold_seconds}
               /></span
             >
-            <span
-              ><label>Difficulty</label><input
-                type="number"
-                min="1"
-                max="10"
-                step="0.5"
-                bind:value={rows[e.id].difficulty}
-              /></span
-            >
-            <span class="wide"
-              ><label>Nerve response</label><input
-                bind:value={rows[e.id].nerve_response}
-                placeholder="e.g. slight twinge 2nd set"
-              /></span
-            >
-            <span class="wide"
-              ><label>Modification</label><input
-                bind:value={rows[e.id].modification}
-                placeholder="e.g. heel elevation"
-              /></span
-            >
-          </div>
-        {/if}
+          {:else}
+            <span><label>Reps</label><input type="number" bind:value={rows[id].reps} /></span>
+          {/if}
+          <span
+            ><label>Weight (kg)</label><input
+              type="number"
+              step="0.5"
+              bind:value={rows[id].weight_kg}
+            /></span
+          >
+          <span
+            ><label>Difficulty</label><input
+              type="number"
+              min="1"
+              max="10"
+              step="0.5"
+              bind:value={rows[id].difficulty}
+            /></span
+          >
+          <span class="wide"
+            ><label>Nerve response</label><input
+              bind:value={rows[id].nerve_response}
+              placeholder="e.g. slight twinge 2nd set"
+            /></span
+          >
+          <span class="wide"
+            ><label>Modification</label><input
+              bind:value={rows[id].modification}
+              placeholder="e.g. heel elevation"
+            /></span
+          >
+        </div>
       </div>
     {/each}
   </div>
@@ -260,6 +285,14 @@
     color: var(--text);
     font-weight: 600;
     margin: 0;
+  }
+  .exhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .picker {
+    margin-bottom: 0.75rem;
   }
   .inputs {
     display: flex;

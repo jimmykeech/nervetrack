@@ -209,3 +209,29 @@ def exercise_progression(db: Database, user_id: UUID, exercise_id: UUID) -> list
         """,
         [exercise_id, user_id],
     )
+
+
+def last_logs(db: Database, user_id: UUID) -> dict[str, dict]:
+    """Most recent log per exercise for the user, to prefill new session rows."""
+    rows = db.query(
+        """
+        SELECT exercise_id, sets, reps, hold_seconds, weight_kg,
+               difficulty, nerve_response, modification
+        FROM (
+            SELECT el.*,
+                   ROW_NUMBER() OVER (PARTITION BY el.exercise_id
+                                      ORDER BY s.performed_at DESC, el.rowid DESC) AS rn
+            FROM exercise_logs el
+            JOIN strength_sessions s ON s.id = el.session_id
+            JOIN daily_entries d     ON d.id = s.daily_entry_id
+            WHERE d.user_id = ?
+        ) t
+        WHERE rn = 1
+        """,
+        [user_id],
+    )
+    out: dict[str, dict] = {}
+    for r in rows:
+        eid = str(r.pop("exercise_id"))
+        out[eid] = r
+    return out
