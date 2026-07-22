@@ -59,14 +59,13 @@
 
   onMount(load);
 
-  async function loadSessions() {
-    loggedSessions = await api.sessionsForDate(date);
+  async function loadSessions(d: string = date) {
+    loggedSessions = await api.sessionsForDate(d);
   }
 
   $effect(() => {
-    // Re-fetch whenever the selected day changes (and on first run).
-    date;
-    loadSessions();
+    // Reading `date` inline registers it as a dependency: refetch on day change.
+    loadSessions(date);
   });
 
   function sessionTime(s: SessionDetail): string {
