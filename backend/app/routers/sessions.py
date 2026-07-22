@@ -30,6 +30,15 @@ def create_session(
         raise HTTPException(422, str(exc)) from exc
 
 
+@router.get("/entries/{entry_date}/sessions", response_model=list[SessionDetail])
+def list_sessions(
+    entry_date: date,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    return service.list_sessions_for_date(db, user_id, entry_date)
+
+
 @router.put("/sessions/{session_id}", response_model=SessionDetail)
 def update_session(
     session_id: UUID,

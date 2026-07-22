@@ -8,6 +8,7 @@ scoping.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from app.db import Database
@@ -76,6 +77,23 @@ def get_session_for_entry(db: Database, daily_entry_id: UUID) -> SessionDetail |
         [daily_entry_id],
     )
     return _hydrate(db, row) if row else None
+
+
+def list_sessions_for_date(
+    db: Database, user_id: UUID, entry_date: date
+) -> list[SessionDetail]:
+    """All of the user's sessions on ``entry_date``, oldest first. Empty if none."""
+    entry = db.query_one(
+        "SELECT id FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+        [user_id, entry_date],
+    )
+    if not entry:
+        return []
+    rows = db.query(
+        "SELECT * FROM strength_sessions WHERE daily_entry_id = ? ORDER BY performed_at",
+        [entry["id"]],
+    )
+    return [_hydrate(db, row) for row in rows]
 
 
 def _validate_exercises(db: Database, user_id: UUID, logs: list[ExerciseLogIn]) -> None:
