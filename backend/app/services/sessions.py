@@ -180,6 +180,35 @@ def update_session(
     return get_session(db, user_id, session_id)
 
 
+def delete_session(db: Database, user_id: UUID, session_id: UUID) -> bool:
+    """Delete one of the user's sessions and re-sync the daily-entry mirror."""
+    existing = _owned_session(db, user_id, session_id)
+    if not existing:
+        return False
+    entry_id = existing["daily_entry_id"]
+    with db.cursor():
+        db.execute("DELETE FROM session_instances WHERE session_id = ?", [session_id])
+        db.execute("DELETE FROM exercise_logs WHERE session_id = ?", [session_id])
+        db.execute("DELETE FROM strength_sessions WHERE id = ?", [session_id])
+        latest = db.query_one(
+            "SELECT intensity FROM strength_sessions "
+            "WHERE daily_entry_id = ? ORDER BY performed_at DESC LIMIT 1",
+            [entry_id],
+        )
+        if latest:
+            db.execute(
+                "UPDATE daily_entries SET session_intensity = ?, updated_at = ? WHERE id = ?",
+                [latest["intensity"], now_utc(), entry_id],
+            )
+        else:
+            db.execute(
+                "UPDATE daily_entries SET strengthening_done = FALSE, "
+                "session_intensity = NULL, updated_at = ? WHERE id = ?",
+                [now_utc(), entry_id],
+            )
+    return True
+
+
 def previous_session(
     db: Database, user_id: UUID, before_session_id: UUID
 ) -> SessionDetail | None:

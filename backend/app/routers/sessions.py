@@ -55,6 +55,16 @@ def update_session(
     return updated
 
 
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(
+    session_id: UUID,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    if not service.delete_session(db, user_id, session_id):
+        raise HTTPException(404, "No such session")
+
+
 @router.get("/sessions/{session_id}/previous", response_model=SessionDetail | None)
 def previous_session(
     session_id: UUID, db=Depends(db_dep), user_id: UUID = Depends(current_user)
