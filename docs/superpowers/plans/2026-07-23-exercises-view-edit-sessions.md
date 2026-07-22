@@ -113,18 +113,18 @@ Add to `backend/tests/test_sessions.py`:
 def test_list_sessions_endpoint(auth_client, db, user_id):
     entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
     service.create_session(db, user_id, entry_id, SessionIn(intensity=5))
-    resp = auth_client.get("/api/entries/2026-06-13/sessions")
+    resp = auth_client.get("/api/v1/entries/2026-06-13/sessions")
     assert resp.status_code == 200
     body = resp.json()
     assert len(body) == 1
     assert body[0]["intensity"] == "5"
 
-    empty = auth_client.get("/api/entries/2026-06-14/sessions")
+    empty = auth_client.get("/api/v1/entries/2026-06-14/sessions")
     assert empty.status_code == 200
     assert empty.json() == []
 ```
 
-Note: confirm the API prefix is `/api` — check an existing router test (e.g. `grep -n 'auth_client.get\|auth_client.post' tests/*.py | head`) and match its prefix.
+Note: the API prefix is `/api/v1` (confirmed in `tests/test_entries.py`).
 
 - [ ] **Step 6: Run tests to verify they pass**
 
@@ -267,15 +267,13 @@ def test_delete_session_endpoint(auth_client, db, user_id):
 
     entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
     created = service.create_session(db, user_id, entry_id, SessionIn(intensity=5))
-    resp = auth_client.delete(f"/api/sessions/{created.id}")
+    resp = auth_client.delete(f"/api/v1/sessions/{created.id}")
     assert resp.status_code == 204
     assert service.get_session(db, user_id, created.id) is None
 
-    missing = auth_client.delete(f"/api/sessions/{uuid4()}")
+    missing = auth_client.delete(f"/api/v1/sessions/{uuid4()}")
     assert missing.status_code == 404
 ```
-
-Match the `/api` prefix to whatever Task 1's endpoint test used.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
