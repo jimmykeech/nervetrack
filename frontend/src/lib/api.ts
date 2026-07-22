@@ -127,6 +127,8 @@ export const api = {
     }),
   updateSession: (id: string, data: Partial<SessionDetail>) =>
     request<SessionDetail>(`/sessions/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  sessionsForDate: (date: string) => request<SessionDetail[]>(`/entries/${date}/sessions`),
+  deleteSession: (id: string) => request<void>(`/sessions/${id}`, { method: 'DELETE' }),
   latestSession: () => request<SessionDetail | null>('/sessions/latest'),
   progression: (exerciseId: string) =>
     request<Record<string, unknown>[]>(`/exercises/${exerciseId}/progression`),
