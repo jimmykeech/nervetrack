@@ -8,6 +8,7 @@ scoping.
 
 from __future__ import annotations
 
+from datetime import date
 from uuid import UUID
 
 from app.db import Database
@@ -76,6 +77,23 @@ def get_session_for_entry(db: Database, daily_entry_id: UUID) -> SessionDetail |
         [daily_entry_id],
     )
     return _hydrate(db, row) if row else None
+
+
+def list_sessions_for_date(
+    db: Database, user_id: UUID, entry_date: date
+) -> list[SessionDetail]:
+    """All of the user's sessions on ``entry_date``, oldest first. Empty if none."""
+    entry = db.query_one(
+        "SELECT id FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+        [user_id, entry_date],
+    )
+    if not entry:
+        return []
+    rows = db.query(
+        "SELECT * FROM strength_sessions WHERE daily_entry_id = ? ORDER BY performed_at",
+        [entry["id"]],
+    )
+    return [_hydrate(db, row) for row in rows]
 
 
 def _validate_exercises(db: Database, user_id: UUID, logs: list[ExerciseLogIn]) -> None:
@@ -160,6 +178,35 @@ def update_session(
             [data.intensity, now_utc(), existing["daily_entry_id"]],
         )
     return get_session(db, user_id, session_id)
+
+
+def delete_session(db: Database, user_id: UUID, session_id: UUID) -> bool:
+    """Delete one of the user's sessions and re-sync the daily-entry mirror."""
+    existing = _owned_session(db, user_id, session_id)
+    if not existing:
+        return False
+    entry_id = existing["daily_entry_id"]
+    with db.cursor():
+        db.execute("DELETE FROM session_instances WHERE session_id = ?", [session_id])
+        db.execute("DELETE FROM exercise_logs WHERE session_id = ?", [session_id])
+        db.execute("DELETE FROM strength_sessions WHERE id = ?", [session_id])
+        latest = db.query_one(
+            "SELECT intensity FROM strength_sessions "
+            "WHERE daily_entry_id = ? ORDER BY performed_at DESC LIMIT 1",
+            [entry_id],
+        )
+        if latest:
+            db.execute(
+                "UPDATE daily_entries SET session_intensity = ?, updated_at = ? WHERE id = ?",
+                [latest["intensity"], now_utc(), entry_id],
+            )
+        else:
+            db.execute(
+                "UPDATE daily_entries SET strengthening_done = FALSE, "
+                "session_intensity = NULL, updated_at = ? WHERE id = ?",
+                [now_utc(), entry_id],
+            )
+    return True
 
 
 def previous_session(

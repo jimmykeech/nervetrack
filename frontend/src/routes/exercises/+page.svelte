@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { api } from '$lib/api';
   import LineChart from '$lib/components/LineChart.svelte';
-  import { todayISO } from '$lib/time';
+  import { todayISO, utcNaiveToLocalInput } from '$lib/time';
   import type { Exercise, ExerciseLog, SessionDetail } from '$lib/types';
   import { activePainInstances } from '$lib/stores/painInstances.svelte';
 
@@ -17,6 +17,8 @@
   let saved = $state<SessionDetail | null>(null);
   let message = $state('');
   let sessionInstanceIds = $state<string[]>([]);
+  let loggedSessions = $state<SessionDetail[]>([]);
+  let editingId = $state<string | null>(null);
 
   function toggleSessionInstance(id: string) {
     sessionInstanceIds = sessionInstanceIds.includes(id)
@@ -57,6 +59,26 @@
 
   onMount(load);
 
+  async function loadSessions(d: string = date) {
+    loggedSessions = await api.sessionsForDate(d);
+  }
+
+  $effect(() => {
+    // Reading `date` inline registers it as a dependency: refetch on day change.
+    loadSessions(date);
+  });
+
+  function sessionTime(s: SessionDetail): string {
+    return utcNaiveToLocalInput(s.performed_at).slice(11, 16); // HH:MM, local
+  }
+
+  function sessionExercises(s: SessionDetail): string {
+    return s.logs
+      .map((l) => l.exercise_name)
+      .filter(Boolean)
+      .join(', ');
+  }
+
   function isTimeBased(name: string): boolean {
     const n = name.toLowerCase();
     return n.includes('plank') || n.includes('hold');
@@ -80,15 +102,69 @@
 
   const availableToAdd = $derived(exercises.filter((e) => !added.includes(e.id)));
 
+  function editSession(s: SessionDetail) {
+    editingId = s.id;
+    added = s.logs.map((l) => l.exercise_id);
+    rows = Object.fromEntries(
+      s.logs.map((l) => [
+        l.exercise_id,
+        {
+          exercise_id: l.exercise_id,
+          sets: l.sets,
+          reps: l.reps,
+          hold_seconds: l.hold_seconds,
+          weight_kg: l.weight_kg,
+          difficulty: l.difficulty,
+          nerve_response: l.nerve_response,
+          modification: l.modification
+        }
+      ])
+    );
+    intensity = s.intensity;
+    sessionNotes = s.notes ?? '';
+    sessionInstanceIds = [...s.instance_ids];
+    message = '';
+  }
+
+  function cancelEdit() {
+    editingId = null;
+    rows = {};
+    added = [];
+    intensity = null;
+    sessionNotes = '';
+    sessionInstanceIds = [];
+    message = '';
+  }
+
+  async function removeSession(s: SessionDetail) {
+    if (!confirm('Delete this logged session?')) return;
+    await api.deleteSession(s.id);
+    if (editingId === s.id) cancelEdit();
+    await loadSessions();
+  }
+
   async function saveSession() {
     const logs = added.map((id) => rows[id]);
-    saved = await api.createSession(date, {
+    const payload = {
       intensity,
       notes: sessionNotes || null,
       logs,
       instance_ids: sessionInstanceIds
-    });
-    message = `Saved session with ${saved.logs.length} exercises.`;
+    };
+    if (editingId) {
+      saved = await api.updateSession(editingId, payload);
+      message = `Updated session with ${saved.logs.length} exercises.`;
+    } else {
+      saved = await api.createSession(date, payload);
+      message = `Saved session with ${saved.logs.length} exercises.`;
+    }
+    editingId = null;
+    rows = {};
+    added = [];
+    intensity = null;
+    sessionNotes = '';
+    sessionInstanceIds = [];
+    await loadSessions();
   }
 
   async function addExercise() {
@@ -147,8 +223,35 @@
   </div>
 </div>
 
-<div class="card">
-  <h3 style="margin-top: 0">Log session</h3>
+{#if loggedSessions.length}
+  <div class="card">
+    <h3 style="margin-top: 0">Logged sessions</h3>
+    {#each loggedSessions as s (s.id)}
+      <div class="logged">
+        <div class="logged-head">
+          <span class="logged-when"
+            >{sessionTime(s)}{#if s.intensity}
+              · intensity {s.intensity}{/if}</span
+          >
+          <span class="logged-actions">
+            <button class="link" onclick={() => editSession(s)}>Edit</button>
+            <button class="link danger" onclick={() => removeSession(s)}>Delete</button>
+          </span>
+        </div>
+        {#if sessionExercises(s)}<div class="muted small">{sessionExercises(s)}</div>{/if}
+        {#if s.notes}<div class="muted small logged-notes">"{s.notes}"</div>{/if}
+      </div>
+    {/each}
+  </div>
+{/if}
+
+<div class="card" class:editing={editingId}>
+  <h3 style="margin-top: 0">
+    {editingId ? 'Edit session' : 'Log session'}
+    {#if editingId}<button class="link" onclick={cancelEdit} style="margin-left: 0.5rem"
+        >Cancel edit</button
+      >{/if}
+  </h3>
   <p class="muted small">
     Add each exercise as you do it — inputs prefill from the last time you logged it.
   </p>
@@ -236,7 +339,9 @@
       </div>
     </div>
   {/if}
-  <button class="status-G" onclick={saveSession}>Save session</button>
+  <button class="status-G" onclick={saveSession}
+    >{editingId ? 'Update session' : 'Save session'}</button
+  >
   {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
 </div>
 
@@ -344,6 +449,34 @@
   .chip.on {
     border-color: var(--accent);
     color: var(--text);
+  }
+  .logged {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 0.5rem 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+  .logged-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .logged-when {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .logged-actions {
+    display: flex;
+    gap: 0.75rem;
+  }
+  .logged-notes {
+    font-style: italic;
+  }
+  .link.danger {
+    color: var(--danger, #c0392b);
+  }
+  .card.editing {
+    border: 1px solid var(--accent);
   }
   .session-meta {
     align-items: center;

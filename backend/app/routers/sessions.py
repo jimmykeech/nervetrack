@@ -30,6 +30,15 @@ def create_session(
         raise HTTPException(422, str(exc)) from exc
 
 
+@router.get("/entries/{entry_date}/sessions", response_model=list[SessionDetail])
+def list_sessions(
+    entry_date: date,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    return service.list_sessions_for_date(db, user_id, entry_date)
+
+
 @router.put("/sessions/{session_id}", response_model=SessionDetail)
 def update_session(
     session_id: UUID,
@@ -44,6 +53,16 @@ def update_session(
     if updated is None:
         raise HTTPException(404, "No such session")
     return updated
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+def delete_session(
+    session_id: UUID,
+    db=Depends(db_dep),
+    user_id: UUID = Depends(current_user),
+):
+    if not service.delete_session(db, user_id, session_id):
+        raise HTTPException(404, "No such session")
 
 
 @router.get("/sessions/{session_id}/previous", response_model=SessionDetail | None)
