@@ -17,6 +17,26 @@ from app.services import pain_instances as pain_instances_service
 from app.services.timeutil import now_utc
 
 
+def _resync_entry_intensity(db: Database, daily_entry_id: UUID) -> None:
+    """Recompute the daily-entry mirror from the day's sessions.
+
+    ``session_intensity`` is derived, never written directly: it is the peak
+    intensity across the day's sessions. With no sessions left, the day is no
+    longer a strengthening day.
+    """
+    agg = db.query_one(
+        "SELECT COUNT(*) AS n, MAX(intensity) AS peak FROM strength_sessions "
+        "WHERE daily_entry_id = ?",
+        [daily_entry_id],
+    )
+    assert agg is not None
+    db.execute(
+        "UPDATE daily_entries SET strengthening_done = ?, session_intensity = ?, "
+        "updated_at = ? WHERE id = ?",
+        [agg["n"] > 0, agg["peak"], now_utc(), daily_entry_id],
+    )
+
+
 def _load_logs(db: Database, session_id: UUID) -> list[ExerciseLog]:
     rows = db.query(
         """
@@ -148,11 +168,7 @@ def create_session(
         _insert_logs(db, row["id"], data.logs)
         _tag_session(db, row["id"], data.instance_ids)
         # Mirror onto the daily entry so the Today view reflects the session.
-        db.execute(
-            "UPDATE daily_entries SET strengthening_done = TRUE, session_intensity = ?, "
-            "updated_at = ? WHERE id = ?",
-            [data.intensity, now_utc(), daily_entry_id],
-        )
+        _resync_entry_intensity(db, daily_entry_id)
     return _hydrate(db, row)
 
 
@@ -173,10 +189,7 @@ def update_session(
         _insert_logs(db, session_id, data.logs)
         db.execute("DELETE FROM session_instances WHERE session_id = ?", [session_id])
         _tag_session(db, session_id, data.instance_ids)
-        db.execute(
-            "UPDATE daily_entries SET session_intensity = ?, updated_at = ? WHERE id = ?",
-            [data.intensity, now_utc(), existing["daily_entry_id"]],
-        )
+        _resync_entry_intensity(db, existing["daily_entry_id"])
     return get_session(db, user_id, session_id)
 
 
@@ -190,22 +203,7 @@ def delete_session(db: Database, user_id: UUID, session_id: UUID) -> bool:
         db.execute("DELETE FROM session_instances WHERE session_id = ?", [session_id])
         db.execute("DELETE FROM exercise_logs WHERE session_id = ?", [session_id])
         db.execute("DELETE FROM strength_sessions WHERE id = ?", [session_id])
-        latest = db.query_one(
-            "SELECT intensity FROM strength_sessions "
-            "WHERE daily_entry_id = ? ORDER BY performed_at DESC LIMIT 1",
-            [entry_id],
-        )
-        if latest:
-            db.execute(
-                "UPDATE daily_entries SET session_intensity = ?, updated_at = ? WHERE id = ?",
-                [latest["intensity"], now_utc(), entry_id],
-            )
-        else:
-            db.execute(
-                "UPDATE daily_entries SET strengthening_done = FALSE, "
-                "session_intensity = NULL, updated_at = ? WHERE id = ?",
-                [now_utc(), entry_id],
-            )
+        _resync_entry_intensity(db, entry_id)
     return True
 
 
