@@ -300,6 +300,34 @@ def test_parse_draft_ignores_preamble_before_the_first_marker():
     assert out.next_steps == "Walk."
 
 
+def test_parse_draft_splits_on_next_marker_even_without_the_key_marker():
+    out = llm._parse_draft("Steady week.\n<<<NEXT_STEPS>>>\nWalk more.")
+
+    assert out.key_observations == "Steady week."
+    assert out.next_steps == "Walk more."
+
+
+def test_parse_draft_strips_markers_the_model_echoed_back():
+    raw = (
+        "<<<KEY_OBSERVATIONS>>>\n"
+        "Steady.\n"
+        "<<<KEY_OBSERVATIONS>>>\n"
+        "Still steady.\n"
+        "<<<NEXT_STEPS>>>\n"
+        "Walk.\n"
+        "<<<NEXT_STEPS>>>\n"
+        "And stretch.\n"
+    )
+
+    out = llm._parse_draft(raw)
+
+    for field in (out.key_observations, out.next_steps):
+        assert llm.KEY_MARKER not in field
+        assert llm.NEXT_MARKER not in field
+    assert "Still steady." in out.key_observations
+    assert "And stretch." in out.next_steps
+
+
 async def test_draft_weekly_returns_parsed_fields(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         msg = types.SimpleNamespace(
@@ -334,6 +362,11 @@ NEXT_MARKER = "<<<NEXT_STEPS>>>"
 Add the parser above `draft_weekly`:
 
 ```python
+def _strip_markers(text: str) -> str:
+    """Drop any stray marker the model echoed back, so none reaches the user."""
+    return text.replace(KEY_MARKER, "").replace(NEXT_MARKER, "").strip()
+
+
 def _parse_draft(raw: str) -> WeeklyDraftResponse:
     """Split a delimited draft into its two fields.
 
@@ -341,16 +374,25 @@ def _parse_draft(raw: str) -> WeeklyDraftResponse:
     rather than a 500. Delimiters are used instead of JSON because the payload
     is multi-line markdown, which models routinely fail to escape inside a JSON
     string value.
+
+    Markers are located by position rather than by membership, so a reply that
+    carries only the NEXT marker still splits correctly instead of dumping the
+    marker text into key_observations. Repeated markers are stripped: the
+    prompt instructs the model to emit these exact strings, so a model echoing
+    its own instructions is a realistic reply, and the result is rendered
+    straight to the user.
     """
-    if KEY_MARKER in raw:
-        _, rest = raw.split(KEY_MARKER, 1)
-        if NEXT_MARKER in rest:
-            obs, nxt = rest.split(NEXT_MARKER, 1)
-            return WeeklyDraftResponse(
-                key_observations=obs.strip(), next_steps=nxt.strip()
-            )
-        return WeeklyDraftResponse(key_observations=rest.strip(), next_steps="")
-    return WeeklyDraftResponse(key_observations=raw.strip(), next_steps="")
+    key_at = raw.find(KEY_MARKER)
+    body = raw[key_at + len(KEY_MARKER) :] if key_at != -1 else raw
+    next_at = body.find(NEXT_MARKER)
+    if next_at == -1:
+        obs, nxt = body, ""
+    else:
+        obs = body[:next_at]
+        nxt = body[next_at + len(NEXT_MARKER) :]
+    return WeeklyDraftResponse(
+        key_observations=_strip_markers(obs), next_steps=_strip_markers(nxt)
+    )
 ```
 
 Then replace the tail of `draft_weekly` (`llm.py:119-124`) — leave the prompt alone, Task 3 handles it:
