@@ -176,3 +176,35 @@ async def test_draft_weekly_returns_parsed_fields(monkeypatch, cfg):
     monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
     out = await llm.draft_weekly(cfg, {"week_start": "2026-06-22", "days": []})
     assert out.key_observations == "steady" and out.next_steps == "walk more"
+
+
+async def test_draft_weekly_prompt_requests_sections_and_includes_history(monkeypatch, cfg):
+    captured: dict = {}
+
+    async def fake_acompletion(**kwargs):
+        captured.update(kwargs)
+        msg = types.SimpleNamespace(content="<<<KEY_OBSERVATIONS>>>\nx\n<<<NEXT_STEPS>>>\ny")
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
+
+    monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
+    bundle = {
+        "week_start": "2026-08-04",
+        "program_week": 21,
+        "days": [],
+        "history": [{"program_week": 8, "avg_tingling_level": "1.1"}],
+        "recent_reviews": [],
+    }
+
+    await llm.draft_weekly(cfg, bundle)
+
+    prompt = captured["messages"][1]["content"]
+    # The section menu the model is told to choose from.
+    assert "### The week at a glance" in prompt
+    assert "### What stood out" in prompt
+    assert "### Analysis" in prompt
+    assert "### Watch-outs" in prompt
+    # The response contract matches what _parse_draft reads.
+    assert llm.KEY_MARKER in prompt
+    assert llm.NEXT_MARKER in prompt
+    # History is serialised into the prompt so past weeks can be cited.
+    assert '"program_week": 8' in prompt

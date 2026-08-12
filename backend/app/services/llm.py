@@ -141,11 +141,25 @@ async def draft_weekly(
     config: ResolvedLlmConfig, bundle: dict, extra_context: str = ""
 ) -> WeeklyDraftResponse:
     prompt = (
-        "Draft this week's review from the JSON data below. Respond with ONLY a JSON "
-        'object: {"key_observations": <retrospective narrative of what happened, in '
-        'the user\'s established concise style>, "next_steps": <forward-looking '
-        "suggestions/plan for the upcoming week>}. No prose outside the JSON.\n\n"
-        + json.dumps(bundle, default=str)
+        "Draft this week's review from the JSON data below.\n\n"
+        "Write both fields as markdown. Structure the key observations with `###` "
+        "headings drawn from this menu, using ONLY the sections this week's data "
+        "supports — skip any you would have to pad:\n\n"
+        "  ### The week at a glance   — the headline numbers and how they compare\n"
+        "  ### What stood out         — the notable events, sessions, and symptoms\n"
+        "  ### Analysis               — why it matters\n"
+        "  ### Watch-outs             — anything to keep an eye on\n\n"
+        "Open Analysis with a single bolded sentence naming the most significant "
+        "thing in this week's data, then argue it from the sequence of days: name "
+        "the days, the numbers, and the exercises involved. Where `history` "
+        'supports it, compare against earlier program weeks by number (e.g. "matching '
+        'W8, W11, W17"). Never cite a week that is not present in `history`, and '
+        "never invent a number.\n\n"
+        "Aim for 350-500 words of key observations and 100-150 words of next steps. "
+        "Write next steps as a short lead sentence followed by a numbered list.\n\n"
+        "Respond in exactly this format, with no prose outside it:\n\n"
+        f"{KEY_MARKER}\n(markdown)\n{NEXT_MARKER}\n(markdown)\n\n"
+        "DATA:\n" + json.dumps(bundle, default=str)
     )
     resp = await litellm.acompletion(
         messages=[{"role": "system", "content": _system(extra_context)},
