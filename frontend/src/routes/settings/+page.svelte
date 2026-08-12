@@ -14,6 +14,7 @@
   let apiKey = $state('');
   let baseUrl = $state('');
   let llmMsg = $state('');
+  let llmError = $state(false);
   let llmBusy = $state(false);
 
   const providers = ['anthropic', 'openai', 'gemini', 'openrouter', 'ollama'];
@@ -35,6 +36,7 @@
   async function saveLlm() {
     llmBusy = true;
     llmMsg = '';
+    llmError = false;
     try {
       llm = await api.saveLlmSettings({
         provider,
@@ -45,7 +47,11 @@
       apiKey = '';
       llmMsg = 'Saved ✓';
     } catch (e) {
+      // e.g. the base_url SSRF guard rejects a private/link-local host or a
+      // non-https endpoint on a multi-user instance (400, message from the
+      // backend's url_guard).
       llmMsg = (e as Error).message;
+      llmError = true;
     } finally {
       llmBusy = false;
     }
@@ -152,7 +158,11 @@
     <button onclick={saveLlm} class="btn-primary" disabled={llmBusy || !model.trim()}
       >Save AI settings</button
     >
-    {#if llmMsg}<span class="small muted">{llmMsg}</span>{/if}
+    {#if llmMsg}
+      <span class={llmError ? 'small' : 'saved'} style={llmError ? 'color: var(--bad)' : ''}
+        >{llmMsg}</span
+      >
+    {/if}
   </div>
 </div>
 
