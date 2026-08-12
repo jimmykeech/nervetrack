@@ -14,7 +14,8 @@
   let message = $state('');
   let editingObs = $state(false);
   let editingNext = $state(false);
-  let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+  let saveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  let saveError = $state('');
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
   const statusClass: Record<string, string> = { G: 'status-G', A: 'status-A', R: 'status-R' };
@@ -36,6 +37,7 @@
     editingObs = false;
     editingNext = false;
     saveState = 'idle';
+    saveError = '';
     message = '';
   }
 
@@ -43,20 +45,30 @@
     if (!selected) return;
     const target = selected.week_start;
     saveState = 'saving';
-    // All four fields go every time: save_week is a full overwrite, so an
-    // omitted field is persisted as NULL.
-    const updated = await api.saveWeek(target, {
-      overall_status: editStatus ?? undefined,
-      key_observations: editObs || undefined,
-      trend_vs_last_week: editTrend || undefined,
-      next_steps: editNext || undefined
-    });
-    weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
-    // The user may have switched weeks while the request was in flight; writing
-    // back then would clobber the newly selected week with this one's data.
-    if (selected?.week_start !== target) return;
-    selected = updated;
-    saveState = 'saved';
+    saveError = '';
+    try {
+      // All four fields go every time: save_week is a full overwrite, so an
+      // omitted field is persisted as NULL.
+      const updated = await api.saveWeek(target, {
+        overall_status: editStatus ?? undefined,
+        key_observations: editObs || undefined,
+        trend_vs_last_week: editTrend || undefined,
+        next_steps: editNext || undefined
+      });
+      weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
+      // The user may have switched weeks while the request was in flight;
+      // writing back then would clobber the newly selected week with this
+      // one's data.
+      if (selected?.week_start !== target) return;
+      selected = updated;
+      saveState = 'saved';
+    } catch (e) {
+      // Auto-save is the only persistence path now: a silent failure would
+      // hang the indicator on "Saving…" and drop the edit without a word.
+      if (selected?.week_start !== target) return;
+      saveError = (e as Error).message;
+      saveState = 'error';
+    }
   }
 
   async function draftWithAi() {
@@ -108,7 +120,9 @@
       <h3>{selected.week_start} → {selected.week_end}</h3>
       <span class="save-ind">
         {#if saveState === 'saving'}<span class="saving">Saving…</span>
-        {:else if saveState === 'saved'}<span class="saved">Saved ✓</span>{/if}
+        {:else if saveState === 'saved'}<span class="saved">Saved ✓</span>
+        {:else if saveState === 'error'}<span class="savefail" title={saveError}>Save failed</span
+          >{/if}
       </span>
     </div>
     <div class="metrics">
@@ -234,6 +248,11 @@
   }
   .save-ind {
     margin-left: auto;
+  }
+  /* `.saved` and `.saving` are global in app.css; the failure state is not. */
+  .savefail {
+    font-size: 0.8rem;
+    color: var(--bad);
   }
   .weeklist {
     display: flex;
