@@ -249,9 +249,10 @@ in Settings first.") is kept.
 **Week switching.** `select(w)` continues to reset the edit toggles, and also
 resets the status/trend expansion state and `saveState`.
 
-**State changes:** drop `message` as a save-status carrier; add
-`saveState: 'idle' | 'saving' | 'saved'`, `editingStatus`, `editingTrend`, and a
-debounce timer. `editingObs` / `editingNext` are retained as-is.
+**State changes:** drop `message` as a save-status carrier (it keeps only draft
+errors); add `saveState: 'idle' | 'saving' | 'saved' | 'error'`, `saveError`,
+`editingStatus` and `editingTrend`. `editingObs` / `editingNext` are retained
+as-is. No timer — see the saving rationale above.
 
 **Accessibility:** the ✎ controls get `aria-label`s ("Edit key observations"),
 the status pill gets `aria-expanded`, and each textarea keeps an associated
