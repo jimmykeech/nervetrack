@@ -125,40 +125,21 @@
           >{/if}
       </span>
     </div>
-    <div class="metrics">
-      <div>
-        <span class="muted small">Sessions</span><strong
-          >{selected.computed.strengthening_sessions}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Avg episodes/day</span><strong
-          >{selected.computed.avg_pain_episodes_per_day ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Avg tingling</span><strong
-          >{selected.computed.avg_tingling_level ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Worst pain</span><strong
-          >{selected.computed.worst_pain ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Days logged</span><strong>{selected.computed.days_logged}</strong>
-      </div>
-      <div>
-        <span class="muted small">Sitting</span><strong
-          >{Math.round(selected.computed.sitting_minutes / 60)}h</strong
-        >
-      </div>
+    <div class="strip tnum">
+      <span><strong>{selected.computed.strengthening_sessions}</strong> sessions</span>
+      <span><strong>{selected.computed.avg_pain_episodes_per_day ?? '—'}</strong> episodes/day</span
+      >
+      <span><strong>{selected.computed.avg_tingling_level ?? '—'}</strong> tingling</span>
+      <span><strong>{selected.computed.worst_pain ?? '—'}</strong> worst pain</span>
+      <span><strong>{selected.computed.days_logged}</strong> days</span>
+      <span><strong>{Math.round(selected.computed.sitting_minutes / 60)}h</strong> sitting</span>
+      <span
+        ><strong
+          >{selected.computed.green_days}/{selected.computed.amber_days}/{selected.computed
+            .red_days}</strong
+        > G/A/R</span
+      >
     </div>
-    <p class="muted small">
-      G/A/R days: {selected.computed.green_days}/{selected.computed.amber_days}/{selected.computed
-        .red_days} · suggested status <strong>{selected.computed.suggested_status}</strong>
-    </p>
 
     <div class="field">
       <label>Overall status</label>
@@ -187,50 +168,74 @@
       </button>
       {#if message}<span class="muted small" style="margin-left: 0.75rem">{message}</span>{/if}
     </div>
-    <div class="field">
-      <div class="fieldhead">
-        <label>Key observations</label>
-        {#if editObs && !editingObs}
-          <button class="link" onclick={() => (editingObs = true)}>✎ Edit</button>
-        {:else if editingObs}
-          <button
-            class="link"
-            onclick={() => {
-              editingObs = false;
-              void save();
-            }}>Done</button
-          >
+    <div class="review">
+      <section class="block">
+        <div class="blockhead">
+          <span class="label-caps">Key observations</span>
+          {#if editObs && !editingObs}
+            <button
+              class="link"
+              aria-label="Edit key observations"
+              onclick={() => (editingObs = true)}>✎ Edit</button
+            >
+          {:else if editingObs}
+            <button
+              class="link"
+              onclick={() => {
+                editingObs = false;
+                void save();
+              }}>Done</button
+            >
+          {/if}
+        </div>
+        {#if editingObs}
+          <textarea
+            bind:value={editObs}
+            rows="16"
+            aria-label="Key observations markdown"
+            placeholder="What stood out this week…"
+          ></textarea>
+        {:else if editObs}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+          <div class="markdown">{@html renderMarkdown(editObs)}</div>
+        {:else}
+          <p class="muted small empty">No review yet — ✨ Draft with AI, or ✎ to write one.</p>
         {/if}
-      </div>
-      {#if editObs && !editingObs}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
-        <div class="markdown rendered">{@html renderMarkdown(editObs)}</div>
-      {:else}
-        <textarea bind:value={editObs} rows="6" placeholder="What stood out this week…"></textarea>
-      {/if}
-    </div>
-    <div class="field">
-      <div class="fieldhead">
-        <label>Next steps</label>
-        {#if editNext && !editingNext}
-          <button class="link" onclick={() => (editingNext = true)}>✎ Edit</button>
-        {:else if editingNext}
-          <button
-            class="link"
-            onclick={() => {
-              editingNext = false;
-              void save();
-            }}>Done</button
-          >
+      </section>
+
+      <section class="block">
+        <div class="blockhead">
+          <span class="label-caps">Next steps</span>
+          {#if editNext && !editingNext}
+            <button class="link" aria-label="Edit next steps" onclick={() => (editingNext = true)}
+              >✎ Edit</button
+            >
+          {:else if editingNext}
+            <button
+              class="link"
+              onclick={() => {
+                editingNext = false;
+                void save();
+              }}>Done</button
+            >
+          {/if}
+        </div>
+        {#if editingNext}
+          <textarea
+            bind:value={editNext}
+            rows="8"
+            aria-label="Next steps markdown"
+            placeholder="Plan for the upcoming week…"
+          ></textarea>
+        {:else if editNext}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+          <div class="markdown">{@html renderMarkdown(editNext)}</div>
+        {:else}
+          <p class="muted small empty">
+            Nothing planned yet — ✨ Draft with AI, or ✎ to write one.
+          </p>
         {/if}
-      </div>
-      {#if editNext && !editingNext}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
-        <div class="markdown rendered">{@html renderMarkdown(editNext)}</div>
-      {:else}
-        <textarea bind:value={editNext} rows="4" placeholder="Plan for the upcoming week…"
-        ></textarea>
-      {/if}
+      </section>
     </div>
   </div>
 {/if}
@@ -269,33 +274,9 @@
   .weekchip.sel {
     border-color: var(--accent);
   }
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
-  }
-  .metrics div {
-    display: flex;
-    flex-direction: column;
-  }
-  .metrics strong {
-    font-size: 1.2rem;
-  }
   .opt {
     flex: 1;
     font-weight: 600;
-  }
-
-  @media (max-width: 640px) {
-    .metrics {
-      grid-template-columns: 1fr;
-    }
-  }
-  .fieldhead {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
   }
   .link {
     border: none;
@@ -304,11 +285,49 @@
     padding: 0;
     font-size: 0.85rem;
   }
-  .rendered {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.5rem 0.75rem;
+
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    padding: 0.55rem 0.9rem;
     background: var(--surface-2);
+    border-radius: var(--r-pill);
+    margin-bottom: 1.1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .strip strong {
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-right: 0.2rem;
+  }
+
+  .review {
+    max-width: 62ch;
+  }
+  .block + .block {
+    border-top: 1px solid var(--border);
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+  }
+  .blockhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.4rem;
+  }
+  .empty {
+    margin: 0;
+  }
+  textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .markdown {
+    line-height: 1.7;
   }
   .markdown :global(> :first-child) {
     margin-top: 0;
@@ -316,22 +335,32 @@
   .markdown :global(> :last-child) {
     margin-bottom: 0;
   }
-  .markdown :global(h1),
+  /* The AI writes `###`; h2/h4 are styled the same as a fallback in case the
+     model picks a different level. */
   .markdown :global(h2),
-  .markdown :global(h3) {
-    margin: 0.6rem 0 0.3rem;
-    line-height: 1.25;
+  .markdown :global(h3),
+  .markdown :global(h4) {
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 1.4rem 0 0.4rem;
   }
   .markdown :global(p),
   .markdown :global(ul),
   .markdown :global(ol) {
-    margin: 0.4rem 0;
+    margin: 0 0 0.85rem;
   }
   .markdown :global(ul),
   .markdown :global(ol) {
     padding-left: 1.25rem;
   }
   .markdown :global(li) {
-    margin: 0.15rem 0;
+    margin: 0.25rem 0;
+  }
+  .markdown :global(strong) {
+    color: var(--text);
   }
 </style>
