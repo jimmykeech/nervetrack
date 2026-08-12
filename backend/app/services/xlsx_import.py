@@ -17,6 +17,7 @@ from uuid import UUID
 from openpyxl import load_workbook
 
 from app.db import Database
+from app.services import sessions as sessions_service
 from app.services.timeutil import now_utc
 
 # Exercises whose "Reps" cell actually records a hold time in seconds.
@@ -311,19 +312,23 @@ def _import_exercise_log(db: Database, user_id: UUID, ws) -> int:
     count = 0
     for sess_date, logs in sessions.items():
         with db.cursor():
+            # The daily sheet is imported before this one, so the day's intensity
+            # (if any) is already on the daily_entries row here.
             entry = db.query_one(
-                "SELECT id FROM daily_entries WHERE user_id = ? AND entry_date = ?",
+                "SELECT id, session_intensity FROM daily_entries "
+                "WHERE user_id = ? AND entry_date = ?",
                 [user_id, sess_date],
             )
-            entry_id = (
-                entry["id"]
-                if entry
-                else db.query_one(
+            if entry:
+                entry_id = entry["id"]
+                day_intensity = entry["session_intensity"]
+            else:
+                entry_id = db.query_one(
                     "INSERT INTO daily_entries (user_id, entry_date, strengthening_done) "
                     "VALUES (?, ?, TRUE) RETURNING id",
                     [user_id, sess_date],
                 )["id"]
-            )
+                day_intensity = None
             # Idempotent: replace any existing imported session for this date.
             existing = db.query(
                 "SELECT id FROM strength_sessions WHERE daily_entry_id = ?", [entry_id]
@@ -332,10 +337,12 @@ def _import_exercise_log(db: Database, user_id: UUID, ws) -> int:
                 db.execute("DELETE FROM exercise_logs WHERE session_id = ?", [s["id"]])
                 db.execute("DELETE FROM strength_sessions WHERE id = ?", [s["id"]])
             performed_at = datetime.combine(sess_date, time(12, 0))
+            # Carry the day's intensity onto the session it belongs to, so this
+            # one-session-per-day shape matches the new per-session model.
             session_id = db.query_one(
-                "INSERT INTO strength_sessions (daily_entry_id, performed_at) "
-                "VALUES (?, ?) RETURNING id",
-                [entry_id, performed_at],
+                "INSERT INTO strength_sessions (daily_entry_id, performed_at, intensity) "
+                "VALUES (?, ?, ?) RETURNING id",
+                [entry_id, performed_at, day_intensity],
             )["id"]
             for log in logs:
                 ex_id = _resolve_exercise(db, user_id, log["name"])
@@ -357,9 +364,10 @@ def _import_exercise_log(db: Database, user_id: UUID, ws) -> int:
                         log["modification"],
                     ],
                 )
-            db.execute(
-                "UPDATE daily_entries SET strengthening_done = TRUE WHERE id = ?", [entry_id]
-            )
+            # Re-sync the mirror rather than stamping strengthening_done directly:
+            # session_intensity is derived, and this keeps the importer honest with
+            # the same invariant services/sessions.py enforces on every session write.
+            sessions_service._resync_entry_intensity(db, entry_id)
         count += 1
     return count
 

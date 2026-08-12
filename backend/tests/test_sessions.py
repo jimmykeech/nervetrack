@@ -126,7 +126,66 @@ def test_delete_session_keeps_mirror_when_others_remain(db, user_id):
     assert service.delete_session(db, user_id, first.id) is True
     done, intensity = _entry_flags(db, entry_id)
     assert done is True
-    assert float(intensity) == 4.0  # latest remaining session's intensity
+    assert float(intensity) == 4.0  # only the remaining session's intensity
+
+
+def test_mirror_is_peak_intensity_regardless_of_insertion_order(db, user_id):
+    entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
+    service.create_session(
+        db, user_id, entry_id,
+        SessionIn(performed_at=datetime(2026, 6, 13, 9, 0, tzinfo=UTC), intensity=4),
+    )
+    service.create_session(
+        db, user_id, entry_id,
+        SessionIn(performed_at=datetime(2026, 6, 13, 18, 0, tzinfo=UTC), intensity=8),
+    )
+    _, intensity = _entry_flags(db, entry_id)
+    assert float(intensity) == 8.0
+
+    entry_id2 = entries_service.ensure_entry(db, user_id, date(2026, 6, 14))
+    service.create_session(
+        db, user_id, entry_id2,
+        SessionIn(performed_at=datetime(2026, 6, 14, 18, 0, tzinfo=UTC), intensity=8),
+    )
+    service.create_session(
+        db, user_id, entry_id2,
+        SessionIn(performed_at=datetime(2026, 6, 14, 9, 0, tzinfo=UTC), intensity=4),
+    )
+    _, intensity2 = _entry_flags(db, entry_id2)
+    assert float(intensity2) == 8.0
+
+
+def test_lowering_the_peak_session_lowers_the_mirror(db, user_id):
+    entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
+    service.create_session(
+        db, user_id, entry_id,
+        SessionIn(performed_at=datetime(2026, 6, 13, 9, 0, tzinfo=UTC), intensity=4),
+    )
+    peak = service.create_session(
+        db, user_id, entry_id,
+        SessionIn(performed_at=datetime(2026, 6, 13, 18, 0, tzinfo=UTC), intensity=8),
+    )
+    service.update_session(
+        db, user_id, peak.id,
+        SessionIn(performed_at=datetime(2026, 6, 13, 18, 0, tzinfo=UTC), intensity=5),
+    )
+    _, intensity = _entry_flags(db, entry_id)
+    assert float(intensity) == 5.0
+
+    deleted = service.delete_session(db, user_id, peak.id)
+    assert deleted is True
+    done, intensity = _entry_flags(db, entry_id)
+    assert done is True
+    assert float(intensity) == 4.0  # remaining session's intensity
+
+
+def test_mirror_is_null_when_all_sessions_have_null_intensity(db, user_id):
+    entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
+    service.create_session(db, user_id, entry_id, SessionIn())
+    service.create_session(db, user_id, entry_id, SessionIn())
+    done, intensity = _entry_flags(db, entry_id)
+    assert done is True
+    assert intensity is None
 
 
 def test_delete_session_rejects_unowned(db, user_id, make_user):

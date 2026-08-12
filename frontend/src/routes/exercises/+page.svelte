@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { page } from '$app/stores';
   import { api } from '$lib/api';
   import LineChart from '$lib/components/LineChart.svelte';
   import { todayISO, utcNaiveToLocalInput } from '$lib/time';
@@ -7,7 +8,7 @@
   import { activePainInstances } from '$lib/stores/painInstances.svelte';
 
   let exercises = $state<Exercise[]>([]);
-  let date = $state(todayISO());
+  let date = $state($page.url.searchParams.get('date') ?? todayISO());
   let intensity = $state<number | null>(null);
   let sessionNotes = $state('');
   let rows = $state<Record<string, ExerciseLog>>({});
@@ -216,10 +217,6 @@
       <label>Session date</label>
       <input type="date" bind:value={date} />
     </div>
-    <div class="field f-intensity">
-      <label>Intensity (1–10)</label>
-      <input type="number" min="1" max="10" step="0.5" bind:value={intensity} />
-    </div>
   </div>
 </div>
 
@@ -318,9 +315,15 @@
       </div>
     {/each}
   </div>
-  <div class="field" style="margin-top: 0.75rem">
-    <label>Session notes</label>
-    <input bind:value={sessionNotes} />
+  <div class="row" style="margin-top: 0.75rem">
+    <div class="field f-intensity">
+      <label>Intensity (1–10)</label>
+      <input type="number" min="1" max="10" step="0.5" bind:value={intensity} />
+    </div>
+    <div class="field" style="flex: 1">
+      <label>Session notes</label>
+      <input bind:value={sessionNotes} />
+    </div>
   </div>
   {#if activePainInstances().length}
     <div class="field" style="margin-top: 0.75rem">
@@ -487,6 +490,7 @@
   }
   .f-intensity {
     max-width: 10rem;
+    flex: none;
   }
   @media (max-width: 640px) {
     .session-meta {

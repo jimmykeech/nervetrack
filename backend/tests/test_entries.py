@@ -73,6 +73,21 @@ def test_api_upsert_and_validation(auth_client):
     assert out_of_range.status_code == 422
 
 
+def test_api_upsert_ignores_session_intensity(auth_client):
+    """session_intensity is derived from sessions; a stale client write is a no-op."""
+    r = auth_client.put(
+        "/api/v1/entries/2026-06-13", json={"status": "G", "session_intensity": 9}
+    )
+    assert r.status_code == 200
+    assert r.json()["session_intensity"] is None
+
+    again = auth_client.put(
+        "/api/v1/entries/2026-06-13", json={"session_intensity": 3}
+    )
+    assert again.status_code == 200
+    assert again.json()["session_intensity"] is None
+
+
 def test_api_requires_auth(client):
     assert client.put("/api/v1/entries/2026-06-13", json={"status": "G"}).status_code == 401
     assert client.get("/api/v1/entries").status_code == 401
