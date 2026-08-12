@@ -36,7 +36,10 @@ def get_settings_endpoint(db=Depends(db_dep), user_id: UUID = Depends(current_us
 def put_settings(
     data: LlmSettingsIn, db=Depends(db_dep), user_id: UUID = Depends(current_user)
 ):
-    return llm_settings.save_settings(db, user_id, data)
+    try:
+        return llm_settings.save_settings(db, user_id, data)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/ai/conversations", response_model=list[ConversationSummary])
@@ -72,7 +75,10 @@ async def send_message(
 ):
     if not conversations.owns(db, user_id, conv_id):
         raise HTTPException(404, "conversation not found")
-    config = llm_settings.resolve_config(db, user_id)
+    try:
+        config = await llm_settings.resolve_config_async(db, user_id)
+    except llm_settings.LlmBaseUrlBlocked as exc:
+        raise HTTPException(403, str(exc)) from exc
     if config is None:
         raise HTTPException(409, "llm_not_configured")
 
@@ -111,7 +117,10 @@ async def send_message(
 async def weekly_draft(
     week_start: date, db=Depends(db_dep), user_id: UUID = Depends(current_user)
 ):
-    config = llm_settings.resolve_config(db, user_id)
+    try:
+        config = await llm_settings.resolve_config_async(db, user_id)
+    except llm_settings.LlmBaseUrlBlocked as exc:
+        raise HTTPException(403, str(exc)) from exc
     if config is None:
         raise HTTPException(409, "llm_not_configured")
     bundle = weekly_service.get_week_bundle(db, user_id, week_start)

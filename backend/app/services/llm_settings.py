@@ -10,7 +10,17 @@ from uuid import UUID
 
 from app.db import Database
 from app.models.ai import LlmSettingsIn, LlmSettingsOut, ResolvedLlmConfig
-from app.services import crypto
+from app.services import crypto, url_guard
+
+
+class LlmBaseUrlBlocked(Exception):
+    """A stored base_url no longer passes the SSRF guard.
+
+    Distinct from the ValueError save_settings raises on invalid input: this
+    fires at request time (resolve_config_async) for a base_url that was
+    valid when saved but is no longer permitted — auth_mode changed, the
+    allowlist changed, or DNS now resolves it somewhere private.
+    """
 
 
 def _row(db: Database, user_id: UUID) -> dict | None:
@@ -41,6 +51,8 @@ def save_settings(db: Database, user_id: UUID, data: LlmSettingsIn) -> LlmSettin
         api_key_enc = crypto.encrypt(data.api_key)
 
     base_url = data.base_url or None
+    if base_url is not None:
+        url_guard.validate_llm_base_url(base_url)  # raises ValueError -> 400
     with db.cursor():
         db.execute(
             """
@@ -64,3 +76,22 @@ def resolve_config(db: Database, user_id: UUID) -> ResolvedLlmConfig | None:
         return None
     api_key = crypto.decrypt(row["api_key_enc"]) if row["api_key_enc"] else None
     return ResolvedLlmConfig(model=row["model"], api_key=api_key, base_url=row["base_url"])
+
+
+async def resolve_config_async(db: Database, user_id: UUID) -> ResolvedLlmConfig | None:
+    """Like resolve_config, but re-runs the SSRF guard on the stored base_url.
+
+    Call this (not resolve_config) from async endpoints that are about to
+    make an outbound LLM call. It closes the save-then-DNS-rebind window and
+    catches any base_url stored before this guard existed. Uses the
+    non-blocking resolver, so it is safe on the event loop. Raises
+    LlmBaseUrlBlocked — not ValueError — so routers can tell "no longer
+    allowed" apart from "invalid input" and respond accordingly.
+    """
+    config = resolve_config(db, user_id)
+    if config is not None and config.base_url:
+        try:
+            await url_guard.validate_llm_base_url_async(config.base_url)
+        except ValueError as exc:
+            raise LlmBaseUrlBlocked(str(exc)) from exc
+    return config
