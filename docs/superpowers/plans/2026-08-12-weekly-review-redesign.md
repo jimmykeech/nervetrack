@@ -890,8 +890,11 @@ In the `<style>` block, delete the `.metrics`, `.metrics div`, `.metrics strong`
   .markdown :global(> :last-child) {
     margin-bottom: 0;
   }
-  /* The AI writes `###`; h2/h4 are styled the same as a fallback in case the
-     model picks a different level. */
+  /* The AI writes `###`; the other levels are styled the same as a fallback,
+     in case the model picks a different one or the user hand-types a heading.
+     Leaving any level out drops it to unstyled browser defaults inside the
+     62ch column, which breaks the small-caps label system. */
+  .markdown :global(h1),
   .markdown :global(h2),
   .markdown :global(h3),
   .markdown :global(h4) {
