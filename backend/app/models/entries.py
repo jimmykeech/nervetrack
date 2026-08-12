@@ -32,7 +32,6 @@ class DailyEntryUpsert(BaseModel):
 
     status: str | None = Field(default=None, pattern="^[GAR]$")
     strengthening_done: bool | None = None
-    session_intensity: Decimal | None = Field(default=None, ge=1, le=10)
     sharp_pain_episodes: int | None = Field(default=None, ge=0)
     worst_pain: Decimal | None = Field(default=None, ge=0, le=10)
     tingling_level: Decimal | None = Field(default=None, ge=0, le=10)

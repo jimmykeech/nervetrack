@@ -23,7 +23,6 @@ from app.services.timeutil import now_utc, to_utc_naive
 _UPSERT_COLUMNS = (
     "status",
     "strengthening_done",
-    "session_intensity",
     "sharp_pain_episodes",
     "worst_pain",
     "tingling_level",
