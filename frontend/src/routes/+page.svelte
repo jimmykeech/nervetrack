@@ -9,9 +9,10 @@
     defaultJabTime,
     formatMinutesLabel,
     shiftISODate,
-    todayISO
+    todayISO,
+    utcNaiveToLocalInput
   } from '$lib/time';
-  import type { DailyEntry, Status } from '$lib/types';
+  import type { DailyEntry, SessionDetail, Status } from '$lib/types';
   import NoteComposer from '$lib/components/NoteComposer.svelte';
   import Timeline from '$lib/components/Timeline.svelte';
   import { activePainInstances, painInstances } from '$lib/stores/painInstances.svelte';
@@ -19,11 +20,11 @@
   let date = $state($page.url.searchParams.get('date') ?? todayISO());
   let entry = $state<DailyEntry | null>(null);
   let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
+  let sessions = $state<SessionDetail[]>([]);
 
   // Editable form fields.
   let status = $state<Status | null>(null);
   let strengthening_done = $state(false);
-  let session_intensity = $state<number | null>(null);
   let worst_pain = $state<number | null>(null);
   let tingling_level = $state<number | null>(null);
   let tingling_duration_minutes = $state<number | null>(null);
@@ -62,7 +63,6 @@
     entry = await api.getEntry(d);
     status = entry?.status ?? null;
     strengthening_done = entry?.strengthening_done ?? false;
-    session_intensity = entry?.session_intensity ?? null;
     worst_pain = entry?.worst_pain ?? null;
     tingling_level = entry?.tingling_level ?? null;
     tingling_duration_minutes = entry?.tingling_duration_minutes ?? null;
@@ -73,6 +73,7 @@
     sitting_breaks = entry?.sitting_breaks ?? '';
     loadedKey = d;
     saveState = 'idle';
+    sessions = await api.sessionsForDate(d);
   }
 
   $effect(() => {
@@ -90,7 +91,6 @@
     const payload = {
       status,
       strengthening_done,
-      session_intensity,
       worst_pain,
       stretches_morning,
       stretches_night,
@@ -128,6 +128,17 @@
 
   function fmtTime(iso: string): string {
     return new Date(iso + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function sessionTime(s: SessionDetail): string {
+    return utcNaiveToLocalInput(s.performed_at).slice(11, 16); // HH:MM, local
+  }
+
+  function sessionExercises(s: SessionDetail): string {
+    return s.logs
+      .map((l) => l.exercise_name)
+      .filter(Boolean)
+      .join(', ');
   }
 
   const totals = $derived(entry?.timer_totals ?? { sitting: 0, standing: 0, lying: 0, walking: 0 });
@@ -204,17 +215,28 @@
       ><input type="checkbox" bind:checked={iced} onchange={scheduleSave} /> Iced piriformis</label
     >
   </div>
-  {#if strengthening_done}
-    <div style="margin-top: 0.75rem; max-width: 16rem">
-      <Stepper
-        label="Session intensity (1–10)"
-        bind:value={session_intensity}
-        min={1}
-        max={10}
-        step={0.5}
-        onChange={scheduleSave}
-      />
-    </div>
+</div>
+
+<div class="card">
+  <div class="jab-head">
+    <h3 style="margin: 0">Sessions</h3>
+    <a class="small" href={`/exercises?date=${date}`}>＋ Log a session</a>
+  </div>
+  {#if sessions.length}
+    <ul class="session-list">
+      {#each sessions as s (s.id)}
+        <li>
+          <a class="session-row" href={`/exercises?date=${date}`}>
+            <span class="session-time">{sessionTime(s)}</span>
+            {#if s.intensity}<span class="session-intensity">intensity {s.intensity}</span>{/if}
+            {#if sessionExercises(s)}<span class="muted small">{sessionExercises(s)}</span>{/if}
+            {#if s.notes}<span class="muted small session-notes">"{s.notes}"</span>{/if}
+          </a>
+        </li>
+      {/each}
+    </ul>
+  {:else}
+    <p class="muted small">No strengthening sessions logged today.</p>
   {/if}
 </div>
 
@@ -369,6 +391,36 @@
     padding: 0.35rem 0;
     border-bottom: 1px solid var(--border);
     font-size: 0.9rem;
+  }
+  .session-list {
+    list-style: none;
+    padding: 0;
+    margin: 0.75rem 0 0;
+  }
+  .session-list li {
+    border-bottom: 1px solid var(--border);
+  }
+  .session-list li:last-child {
+    border-bottom: none;
+  }
+  .session-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    padding: 0.5rem 0;
+    color: var(--text);
+  }
+  .session-time {
+    font-weight: 600;
+  }
+  .session-intensity {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+  }
+  .session-notes {
+    font-style: italic;
+    flex-basis: 100%;
   }
   .link {
     border: none;
