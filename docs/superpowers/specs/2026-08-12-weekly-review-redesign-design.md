@@ -255,8 +255,16 @@ errors); add `saveState: 'idle' | 'saving' | 'saved' | 'error'`, `saveError`,
 as-is. No timer — see the saving rationale above.
 
 **Accessibility:** the ✎ controls get `aria-label`s ("Edit key observations"),
-the status pill gets `aria-expanded`, and each textarea keeps an associated
-label even when the visible label is the section heading.
+the status and trend pills get `aria-label`s naming what they change, and each
+textarea keeps an associated label even when the visible label is the section
+heading. The pills deliberately carry no `aria-expanded`: expanding unmounts
+the trigger and mounts different elements rather than toggling adjacent
+content, so the attribute would announce a disclosure that never opens.
+
+Known gap, deferred: expanding a pill drops keyboard focus to `<body>`,
+because the focused trigger is the element being unmounted. Fixing it means
+moving focus to the first revealed control and back on collapse — worth doing,
+but it needs runtime verification this project cannot yet perform.
 
 ### Legacy content
 
