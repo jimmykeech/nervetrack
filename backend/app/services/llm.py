@@ -104,6 +104,11 @@ async def stream_chat(
     yield {"type": "final", "content": final.choices[0].message.content or ""}
 
 
+def _strip_markers(text: str) -> str:
+    """Drop any stray marker the model echoed back, so none reaches the user."""
+    return text.replace(KEY_MARKER, "").replace(NEXT_MARKER, "").strip()
+
+
 def _parse_draft(raw: str) -> WeeklyDraftResponse:
     """Split a delimited draft into its two fields.
 
@@ -111,16 +116,25 @@ def _parse_draft(raw: str) -> WeeklyDraftResponse:
     rather than a 500. Delimiters are used instead of JSON because the payload
     is multi-line markdown, which models routinely fail to escape inside a JSON
     string value.
+
+    Markers are located by position rather than by membership, so a reply that
+    carries only the NEXT marker still splits correctly instead of dumping the
+    marker text into key_observations. Repeated markers are stripped: the
+    prompt instructs the model to emit these exact strings, so a model echoing
+    its own instructions is a realistic reply, and the result is rendered
+    straight to the user.
     """
-    if KEY_MARKER in raw:
-        _, rest = raw.split(KEY_MARKER, 1)
-        if NEXT_MARKER in rest:
-            obs, nxt = rest.split(NEXT_MARKER, 1)
-            return WeeklyDraftResponse(
-                key_observations=obs.strip(), next_steps=nxt.strip()
-            )
-        return WeeklyDraftResponse(key_observations=rest.strip(), next_steps="")
-    return WeeklyDraftResponse(key_observations=raw.strip(), next_steps="")
+    key_at = raw.find(KEY_MARKER)
+    body = raw[key_at + len(KEY_MARKER) :] if key_at != -1 else raw
+    next_at = body.find(NEXT_MARKER)
+    if next_at == -1:
+        obs, nxt = body, ""
+    else:
+        obs = body[:next_at]
+        nxt = body[next_at + len(NEXT_MARKER) :]
+    return WeeklyDraftResponse(
+        key_observations=_strip_markers(obs), next_steps=_strip_markers(nxt)
+    )
 
 
 async def draft_weekly(

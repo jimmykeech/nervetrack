@@ -138,6 +138,34 @@ def test_parse_draft_ignores_preamble_before_the_first_marker():
     assert out.next_steps == "Walk."
 
 
+def test_parse_draft_splits_on_next_marker_even_without_the_key_marker():
+    out = llm._parse_draft("Steady week.\n<<<NEXT_STEPS>>>\nWalk more.")
+
+    assert out.key_observations == "Steady week."
+    assert out.next_steps == "Walk more."
+
+
+def test_parse_draft_strips_markers_the_model_echoed_back():
+    raw = (
+        "<<<KEY_OBSERVATIONS>>>\n"
+        "Steady.\n"
+        "<<<KEY_OBSERVATIONS>>>\n"
+        "Still steady.\n"
+        "<<<NEXT_STEPS>>>\n"
+        "Walk.\n"
+        "<<<NEXT_STEPS>>>\n"
+        "And stretch.\n"
+    )
+
+    out = llm._parse_draft(raw)
+
+    for field in (out.key_observations, out.next_steps):
+        assert llm.KEY_MARKER not in field
+        assert llm.NEXT_MARKER not in field
+    assert "Still steady." in out.key_observations
+    assert "And stretch." in out.next_steps
+
+
 async def test_draft_weekly_returns_parsed_fields(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         msg = types.SimpleNamespace(
