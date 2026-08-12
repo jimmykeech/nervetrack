@@ -167,10 +167,12 @@ def list_weeks(db: Database, user_id: UUID) -> list[WeeklySummary]:
 
 
 def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, Any]:
-    """Serialisable bundle of a user's week of data.
+    """Serialisable bundle of a user's week of data, plus program history.
 
-    Phase 2 will feed this into the Claude API as context; keeping it as one
-    clean service function now means the AI layer needs no new queries.
+    ``history`` carries every prior week's computed metrics (no day-level data)
+    so the AI drafter can compare this week against earlier ones by program
+    week number. ``recent_reviews`` carries the last three saved reviews for
+    narrative continuity.
     """
     from app.services import entries as entries_service
 
@@ -182,9 +184,40 @@ def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, 
         if entry is not None:
             days.append(entry.model_dump(mode="json"))
         cursor += timedelta(days=1)
+
+    # list_weeks returns newest-first; number the weeks oldest-first so week 1
+    # is the first week containing any logged entry.
+    tracked = sorted(list_weeks(db, user_id), key=lambda w: w.week_start)
+    numbers = {w.week_start: i for i, w in enumerate(tracked, start=1)}
+    prior = [w for w in tracked if w.week_start < week_start]
+
+    history = [
+        {
+            "program_week": numbers[w.week_start],
+            "week_start": w.week_start.isoformat(),
+            "overall_status": w.overall_status,
+            "trend_vs_last_week": w.trend_vs_last_week,
+            **w.computed.model_dump(mode="json"),
+        }
+        for w in prior
+    ]
+    reviewed = [w for w in prior if w.key_observations][-3:]
+    recent_reviews = [
+        {
+            "program_week": numbers[w.week_start],
+            "week_start": w.week_start.isoformat(),
+            "key_observations": w.key_observations,
+            "next_steps": w.next_steps,
+        }
+        for w in reversed(reviewed)
+    ]
+
     return {
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
+        "program_week": numbers.get(week_start, len(tracked) + 1),
         "summary": get_week(db, user_id, week_start).model_dump(mode="json"),
         "days": days,
+        "history": history,
+        "recent_reviews": recent_reviews,
     }
