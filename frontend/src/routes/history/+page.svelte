@@ -42,7 +42,7 @@
     ds('Sharp pain episodes', 'sharp_pain_episodes', token('--bad')),
     ds('Worst pain', 'worst_pain', token('--caution')),
     ds('Tingling level', 'tingling_level', token('--accent')),
-    ds('Session intensity', 'session_intensity', token('--good'))
+    ds('Peak session intensity', 'session_intensity', token('--good'))
   ]);
 
   const postureDatasets = $derived([
