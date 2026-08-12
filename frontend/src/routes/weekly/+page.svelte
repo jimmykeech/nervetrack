@@ -14,6 +14,8 @@
   let message = $state('');
   let editingObs = $state(false);
   let editingNext = $state(false);
+  let editingStatus = $state(false);
+  let editingTrend = $state(false);
   let saveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
   let saveError = $state('');
 
@@ -36,6 +38,8 @@
     editNext = w.next_steps ?? '';
     editingObs = false;
     editingNext = false;
+    editingStatus = false;
+    editingTrend = false;
     saveState = 'idle';
     saveError = '';
     message = '';
@@ -71,8 +75,16 @@
     }
   }
 
+  function pickStatus(s: Status) {
+    editStatus = s;
+    editingStatus = false;
+    void save();
+  }
+
   async function draftWithAi() {
     if (!selected) return;
+    if ((editObs || editNext) && !confirm("Replace this week's review with a new AI draft?"))
+      return;
     drafting = true;
     message = '';
     try {
@@ -118,6 +130,48 @@
   <div class="card">
     <div class="weekhead">
       <h3>{selected.week_start} → {selected.week_end}</h3>
+
+      {#if editingStatus}
+        <span class="statuspick">
+          {#each ['G', 'A', 'R'] as s}
+            <button class="pill {statusClass[s]}" onclick={() => pickStatus(s as Status)}
+              >{s}</button
+            >
+          {/each}
+        </span>
+      {:else if editStatus}
+        <button
+          class="pill {statusClass[editStatus]}"
+          aria-expanded="false"
+          aria-label="Change overall status"
+          onclick={() => (editingStatus = true)}>{editStatus}</button
+        >
+      {:else}
+        <button class="pill unset" aria-expanded="false" onclick={() => (editingStatus = true)}
+          >Set status</button
+        >
+        <span class="muted small">suggested {selected.computed.suggested_status}</span>
+      {/if}
+
+      {#if editingTrend}
+        <select
+          bind:value={editTrend}
+          onchange={() => {
+            editingTrend = false;
+            void save();
+          }}
+        >
+          <option value="">—</option>
+          {#each trends as t}<option value={t}>{t}</option>{/each}
+        </select>
+      {:else}
+        <button
+          class="pill"
+          aria-label="Change trend vs last week"
+          onclick={() => (editingTrend = true)}>{editTrend || 'Set trend'}</button
+        >
+      {/if}
+
       <span class="save-ind">
         {#if saveState === 'saving'}<span class="saving">Saving…</span>
         {:else if saveState === 'saved'}<span class="saved">Saved ✓</span>
@@ -141,27 +195,6 @@
       >
     </div>
 
-    <div class="field">
-      <label>Overall status</label>
-      <div class="row">
-        {#each ['G', 'A', 'R'] as s}
-          <button
-            class="opt {editStatus === s ? `status-${s}` : ''}"
-            onclick={() => {
-              editStatus = s as Status;
-              void save();
-            }}>{s}</button
-          >
-        {/each}
-      </div>
-    </div>
-    <div class="field">
-      <label>Trend vs last week</label>
-      <select bind:value={editTrend} onchange={() => void save()}>
-        <option value="">—</option>
-        {#each trends as t}<option value={t}>{t}</option>{/each}
-      </select>
-    </div>
     <div class="field">
       <button class="draft" onclick={draftWithAi} disabled={drafting}>
         {drafting ? 'Drafting…' : '✨ Draft with AI'}
@@ -274,9 +307,21 @@
   .weekchip.sel {
     border-color: var(--accent);
   }
-  .opt {
-    flex: 1;
-    font-weight: 600;
+  button.pill {
+    cursor: pointer;
+  }
+  .pill.unset {
+    border-style: dashed;
+    background: none;
+    color: var(--text-muted);
+  }
+  .statuspick {
+    display: inline-flex;
+    gap: 0.3rem;
+  }
+  /* Global `select` is width:100%, which would blow out the header row. */
+  .weekhead select {
+    width: auto;
   }
   .link {
     border: none;
@@ -335,8 +380,11 @@
   .markdown :global(> :last-child) {
     margin-bottom: 0;
   }
-  /* The AI writes `###`; h2/h4 are styled the same as a fallback in case the
-     model picks a different level. */
+  /* The AI writes `###`; the other levels are styled the same as a fallback,
+     in case the model picks a different one or the user hand-types a heading.
+     Leaving any level out drops it to unstyled browser defaults inside the
+     62ch column, which breaks the small-caps label system. */
+  .markdown :global(h1),
   .markdown :global(h2),
   .markdown :global(h3),
   .markdown :global(h4) {
