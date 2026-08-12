@@ -40,6 +40,7 @@
     editingNext = false;
     editingStatus = false;
     editingTrend = false;
+    drafting = false;
     saveState = 'idle';
     saveError = '';
     message = '';
@@ -85,16 +86,21 @@
     if (!selected) return;
     if ((editObs || editNext) && !confirm("Replace this week's review with a new AI draft?"))
       return;
+    const target = selected.week_start;
     drafting = true;
     message = '';
     try {
-      const d = await api.weeklyDraft(selected.week_start);
+      const d = await api.weeklyDraft(target);
+      // Drafting takes tens of seconds and the week list stays clickable; without
+      // this the draft would be saved onto whichever week is selected on resolve.
+      if (selected?.week_start !== target) return;
       editObs = d.key_observations;
       editNext = d.next_steps;
       editingObs = false;
       editingNext = false;
       void save();
     } catch (e) {
+      if (selected?.week_start !== target) return;
       message = (e as Error).message.startsWith('409')
         ? 'Configure a model in Settings first.'
         : (e as Error).message;
@@ -142,14 +148,11 @@
       {:else if editStatus}
         <button
           class="pill {statusClass[editStatus]}"
-          aria-expanded="false"
           aria-label="Change overall status"
           onclick={() => (editingStatus = true)}>{editStatus}</button
         >
       {:else}
-        <button class="pill unset" aria-expanded="false" onclick={() => (editingStatus = true)}
-          >Set status</button
-        >
+        <button class="pill unset" onclick={() => (editingStatus = true)}>Set status</button>
         <span class="muted small">suggested {selected.computed.suggested_status}</span>
       {/if}
 
@@ -160,6 +163,7 @@
             editingTrend = false;
             void save();
           }}
+          onblur={() => (editingTrend = false)}
         >
           <option value="">—</option>
           {#each trends as t}<option value={t}>{t}</option>{/each}
@@ -195,12 +199,6 @@
       >
     </div>
 
-    <div class="field">
-      <button class="draft" onclick={draftWithAi} disabled={drafting}>
-        {drafting ? 'Drafting…' : '✨ Draft with AI'}
-      </button>
-      {#if message}<span class="muted small" style="margin-left: 0.75rem">{message}</span>{/if}
-    </div>
     <div class="review">
       <section class="block">
         <div class="blockhead">
@@ -269,6 +267,12 @@
           </p>
         {/if}
       </section>
+    </div>
+    <div class="field draftrow">
+      <button class="draft" onclick={draftWithAi} disabled={drafting}>
+        {drafting ? 'Drafting…' : '✨ Draft with AI'}
+      </button>
+      {#if message}<span class="savefail" style="margin-left: 0.75rem">{message}</span>{/if}
     </div>
   </div>
 {/if}
@@ -362,6 +366,10 @@
     justify-content: space-between;
     margin-bottom: 0.4rem;
   }
+  /* Sits below the review now, per the spec, so it needs its own separation. */
+  .draftrow {
+    margin-top: 1.25rem;
+  }
   .empty {
     margin: 0;
   }
@@ -387,7 +395,9 @@
   .markdown :global(h1),
   .markdown :global(h2),
   .markdown :global(h3),
-  .markdown :global(h4) {
+  .markdown :global(h4),
+  .markdown :global(h5),
+  .markdown :global(h6) {
     font-family: var(--font-display);
     font-size: 0.72rem;
     font-weight: 700;
