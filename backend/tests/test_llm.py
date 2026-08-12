@@ -208,3 +208,5 @@ async def test_draft_weekly_prompt_requests_sections_and_includes_history(monkey
     assert llm.NEXT_MARKER in prompt
     # History is serialised into the prompt so past weeks can be cited.
     assert '"program_week": 8' in prompt
+    # Safety property in a health tracker, not a style preference — pin it.
+    assert "never invent a number" in prompt

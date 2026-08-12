@@ -167,12 +167,12 @@ def list_weeks(db: Database, user_id: UUID) -> list[WeeklySummary]:
 
 
 def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, Any]:
-    """Serialisable bundle of a user's week of data, plus program history.
+    """Serialisable bundle of a user's week of data.
 
-    ``history`` carries every prior week's computed metrics (no day-level data)
-    so the AI drafter can compare this week against earlier ones by program
-    week number. ``recent_reviews`` carries the last three saved reviews for
-    narrative continuity.
+    Deliberately lean: this is also the ``get_week_summary`` chat tool
+    (``app/services/ai_tools.py``), where extra context would be duplicated
+    across every tool call and is not what the tool's description advertises.
+    The weekly-review drafter wants history too — see ``get_draft_bundle``.
     """
     from app.services import entries as entries_service
 
@@ -184,6 +184,24 @@ def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, 
         if entry is not None:
             days.append(entry.model_dump(mode="json"))
         cursor += timedelta(days=1)
+
+    return {
+        "week_start": week_start.isoformat(),
+        "week_end": week_end.isoformat(),
+        "summary": get_week(db, user_id, week_start).model_dump(mode="json"),
+        "days": days,
+    }
+
+
+def get_draft_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, Any]:
+    """The weekly-review drafter's bundle: one week plus program history.
+
+    ``history`` carries every prior week's computed metrics (no day-level data)
+    so the drafter can compare this week against earlier ones by program week
+    number. ``recent_reviews`` carries the last three saved reviews for
+    narrative continuity.
+    """
+    bundle = get_week_bundle(db, user_id, week_start)
 
     # list_weeks returns newest-first; number the weeks oldest-first so week 1
     # is the first week containing any logged entry.
@@ -212,12 +230,13 @@ def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, 
         for w in reversed(reviewed)
     ]
 
-    return {
-        "week_start": week_start.isoformat(),
-        "week_end": week_end.isoformat(),
-        "program_week": numbers.get(week_start, len(tracked) + 1),
-        "summary": get_week(db, user_id, week_start).model_dump(mode="json"),
-        "days": days,
-        "history": history,
-        "recent_reviews": recent_reviews,
-    }
+    # A week earlier than the whole program is week 1, not one past the end.
+    if not tracked or week_start < tracked[0].week_start:
+        program_week = 1
+    else:
+        program_week = numbers.get(week_start, len(tracked) + 1)
+
+    bundle["program_week"] = program_week
+    bundle["history"] = history
+    bundle["recent_reviews"] = recent_reviews
+    return bundle

@@ -155,6 +155,8 @@ async def draft_weekly(
         'supports it, compare against earlier program weeks by number (e.g. "matching '
         'W8, W11, W17"). Never cite a week that is not present in `history`, and '
         "never invent a number.\n\n"
+        "`recent_reviews` shows what you already told the user in previous weeks — "
+        "build on it and note what changed; never repeat it back.\n\n"
         "Aim for 350-500 words of key observations and 100-150 words of next steps. "
         "Write next steps as a short lead sentence followed by a numbered list.\n\n"
         "Respond in exactly this format, with no prose outside it:\n\n"

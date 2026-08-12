@@ -123,5 +123,5 @@ async def weekly_draft(
         raise HTTPException(403, str(exc)) from exc
     if config is None:
         raise HTTPException(409, "llm_not_configured")
-    bundle = weekly_service.get_week_bundle(db, user_id, week_start)
+    bundle = weekly_service.get_draft_bundle(db, user_id, week_start)
     return await llm.draft_weekly(config, bundle, extra_context=records_context.build(db, user_id))
