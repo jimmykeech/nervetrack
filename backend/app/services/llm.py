@@ -24,6 +24,9 @@ SYSTEM_PROMPT = (
     "encouraging. Dates are ISO (YYYY-MM-DD)."
 )
 
+KEY_MARKER = "<<<KEY_OBSERVATIONS>>>"
+NEXT_MARKER = "<<<NEXT_STEPS>>>"
+
 
 def _completion_kwargs(config: ResolvedLlmConfig) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"model": config.model}
@@ -101,6 +104,25 @@ async def stream_chat(
     yield {"type": "final", "content": final.choices[0].message.content or ""}
 
 
+def _parse_draft(raw: str) -> WeeklyDraftResponse:
+    """Split a delimited draft into its two fields.
+
+    Never raises: a malformed reply still yields something the user can edit
+    rather than a 500. Delimiters are used instead of JSON because the payload
+    is multi-line markdown, which models routinely fail to escape inside a JSON
+    string value.
+    """
+    if KEY_MARKER in raw:
+        _, rest = raw.split(KEY_MARKER, 1)
+        if NEXT_MARKER in rest:
+            obs, nxt = rest.split(NEXT_MARKER, 1)
+            return WeeklyDraftResponse(
+                key_observations=obs.strip(), next_steps=nxt.strip()
+            )
+        return WeeklyDraftResponse(key_observations=rest.strip(), next_steps="")
+    return WeeklyDraftResponse(key_observations=raw.strip(), next_steps="")
+
+
 async def draft_weekly(
     config: ResolvedLlmConfig, bundle: dict, extra_context: str = ""
 ) -> WeeklyDraftResponse:
@@ -116,9 +138,4 @@ async def draft_weekly(
                   {"role": "user", "content": prompt}],
         **_completion_kwargs(config),
     )
-    raw = resp.choices[0].message.content or "{}"
-    data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-    return WeeklyDraftResponse(
-        key_observations=data.get("key_observations", ""),
-        next_steps=data.get("next_steps", ""),
-    )
+    return _parse_draft(resp.choices[0].message.content or "")

@@ -1,4 +1,3 @@
-import json
 import types
 
 import pytest
@@ -94,13 +93,57 @@ async def test_extra_context_reaches_system_prompt(monkeypatch, cfg):
     assert "PATIENT BACKGROUND" in system["content"]
 
 
-async def test_draft_weekly_parses_json(monkeypatch, cfg):
+def test_parse_draft_splits_on_markers():
+    raw = (
+        "<<<KEY_OBSERVATIONS>>>\n"
+        "### The week at a glance\n"
+        "All seven days green.\n\n"
+        "### Analysis\n"
+        "**The painting weekend absorbed without a flare.**\n"
+        "<<<NEXT_STEPS>>>\n"
+        "Hold the volume.\n\n"
+        "1. Keep the 3-set goblet squat\n"
+    )
+
+    out = llm._parse_draft(raw)
+
+    assert out.key_observations.startswith("### The week at a glance")
+    assert "### Analysis" in out.key_observations
+    assert "**The painting weekend absorbed without a flare.**" in out.key_observations
+    assert out.next_steps.startswith("Hold the volume.")
+    assert "1. Keep the 3-set goblet squat" in out.next_steps
+    # The markers themselves never leak into the stored fields.
+    assert llm.KEY_MARKER not in out.key_observations
+    assert llm.NEXT_MARKER not in out.key_observations
+
+
+def test_parse_draft_without_next_marker_keeps_everything_as_observations():
+    out = llm._parse_draft("<<<KEY_OBSERVATIONS>>>\n### Analysis\nSteady week.")
+
+    assert out.key_observations == "### Analysis\nSteady week."
+    assert out.next_steps == ""
+
+
+def test_parse_draft_without_markers_never_raises():
+    out = llm._parse_draft("Sorry, I could not read the data.")
+
+    assert out.key_observations == "Sorry, I could not read the data."
+    assert out.next_steps == ""
+
+
+def test_parse_draft_ignores_preamble_before_the_first_marker():
+    out = llm._parse_draft("Here you go:\n<<<KEY_OBSERVATIONS>>>\nSteady.\n<<<NEXT_STEPS>>>\nWalk.")
+
+    assert out.key_observations == "Steady."
+    assert out.next_steps == "Walk."
+
+
+async def test_draft_weekly_returns_parsed_fields(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         msg = types.SimpleNamespace(
-            content=json.dumps({"key_observations": "steady", "next_steps": "walk more"})
+            content="<<<KEY_OBSERVATIONS>>>\nsteady\n<<<NEXT_STEPS>>>\nwalk more"
         )
-        choice = types.SimpleNamespace(message=msg)
-        return types.SimpleNamespace(choices=[choice])
+        return types.SimpleNamespace(choices=[types.SimpleNamespace(message=msg)])
 
     monkeypatch.setattr(llm.litellm, "acompletion", fake_acompletion)
     out = await llm.draft_weekly(cfg, {"week_start": "2026-06-22", "days": []})
