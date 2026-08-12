@@ -18,6 +18,10 @@
   let editingTrend = $state(false);
   let saveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
   let saveError = $state('');
+  // Identifies the one draft request allowed to land. Comparing the week alone
+  // is not enough: leaving a week and coming back would make an abandoned
+  // request current again and let it overwrite what you typed meanwhile.
+  let draftSeq = 0;
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
   const statusClass: Record<string, string> = { G: 'status-G', A: 'status-A', R: 'status-R' };
@@ -29,6 +33,8 @@
   onMount(load);
 
   function select(w: WeeklySummary) {
+    // Abandon any in-flight draft: its result is stale the moment you leave.
+    draftSeq += 1;
     selected = w;
     // Not `?? w.computed.suggested_status` — with auto-save that would persist a
     // status the user never picked. The suggestion is shown as a hint instead.
@@ -87,25 +93,28 @@
     if ((editObs || editNext) && !confirm("Replace this week's review with a new AI draft?"))
       return;
     const target = selected.week_start;
+    const seq = (draftSeq += 1);
     drafting = true;
     message = '';
     try {
       const d = await api.weeklyDraft(target);
-      // Drafting takes tens of seconds and the week list stays clickable; without
-      // this the draft would be saved onto whichever week is selected on resolve.
-      if (selected?.week_start !== target) return;
+      // Drafting takes tens of seconds and the week list stays clickable. Only
+      // the newest request, still on its own week, may land — otherwise the
+      // finished prose would be auto-saved over whatever is on screen now.
+      if (seq !== draftSeq || selected?.week_start !== target) return;
       editObs = d.key_observations;
       editNext = d.next_steps;
       editingObs = false;
       editingNext = false;
       void save();
     } catch (e) {
-      if (selected?.week_start !== target) return;
+      if (seq !== draftSeq || selected?.week_start !== target) return;
       message = (e as Error).message.startsWith('409')
         ? 'Configure a model in Settings first.'
         : (e as Error).message;
     } finally {
-      drafting = false;
+      // A superseded request must not re-enable the button under a live one.
+      if (seq === draftSeq) drafting = false;
     }
   }
 </script>
