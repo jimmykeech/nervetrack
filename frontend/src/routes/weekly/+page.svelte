@@ -14,6 +14,7 @@
   let message = $state('');
   let editingObs = $state(false);
   let editingNext = $state(false);
+  let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
   const statusClass: Record<string, string> = { G: 'status-G', A: 'status-A', R: 'status-R' };
@@ -26,26 +27,36 @@
 
   function select(w: WeeklySummary) {
     selected = w;
-    editStatus = w.overall_status ?? w.computed.suggested_status ?? null;
+    // Not `?? w.computed.suggested_status` — with auto-save that would persist a
+    // status the user never picked. The suggestion is shown as a hint instead.
+    editStatus = w.overall_status ?? null;
     editObs = w.key_observations ?? '';
     editTrend = w.trend_vs_last_week ?? '';
     editNext = w.next_steps ?? '';
     editingObs = false;
     editingNext = false;
+    saveState = 'idle';
     message = '';
   }
 
   async function save() {
     if (!selected) return;
-    const updated = await api.saveWeek(selected.week_start, {
+    const target = selected.week_start;
+    saveState = 'saving';
+    // All four fields go every time: save_week is a full overwrite, so an
+    // omitted field is persisted as NULL.
+    const updated = await api.saveWeek(target, {
       overall_status: editStatus ?? undefined,
       key_observations: editObs || undefined,
       trend_vs_last_week: editTrend || undefined,
       next_steps: editNext || undefined
     });
-    message = 'Saved ✓';
     weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
+    // The user may have switched weeks while the request was in flight; writing
+    // back then would clobber the newly selected week with this one's data.
+    if (selected?.week_start !== target) return;
     selected = updated;
+    saveState = 'saved';
   }
 
   async function draftWithAi() {
@@ -58,7 +69,7 @@
       editNext = d.next_steps;
       editingObs = false;
       editingNext = false;
-      message = 'Draft ready — review and Save.';
+      void save();
     } catch (e) {
       message = (e as Error).message.startsWith('409')
         ? 'Configure a model in Settings first.'
@@ -93,7 +104,13 @@
 
 {#if selected}
   <div class="card">
-    <h3 style="margin-top: 0">{selected.week_start} → {selected.week_end}</h3>
+    <div class="weekhead">
+      <h3>{selected.week_start} → {selected.week_end}</h3>
+      <span class="save-ind">
+        {#if saveState === 'saving'}<span class="saving">Saving…</span>
+        {:else if saveState === 'saved'}<span class="saved">Saved ✓</span>{/if}
+      </span>
+    </div>
     <div class="metrics">
       <div>
         <span class="muted small">Sessions</span><strong
@@ -135,14 +152,17 @@
         {#each ['G', 'A', 'R'] as s}
           <button
             class="opt {editStatus === s ? `status-${s}` : ''}"
-            onclick={() => (editStatus = s as Status)}>{s}</button
+            onclick={() => {
+              editStatus = s as Status;
+              void save();
+            }}>{s}</button
           >
         {/each}
       </div>
     </div>
     <div class="field">
       <label>Trend vs last week</label>
-      <select bind:value={editTrend}>
+      <select bind:value={editTrend} onchange={() => void save()}>
         <option value="">—</option>
         {#each trends as t}<option value={t}>{t}</option>{/each}
       </select>
@@ -151,6 +171,7 @@
       <button class="draft" onclick={draftWithAi} disabled={drafting}>
         {drafting ? 'Drafting…' : '✨ Draft with AI'}
       </button>
+      {#if message}<span class="muted small" style="margin-left: 0.75rem">{message}</span>{/if}
     </div>
     <div class="field">
       <div class="fieldhead">
@@ -158,7 +179,13 @@
         {#if editObs && !editingObs}
           <button class="link" onclick={() => (editingObs = true)}>✎ Edit</button>
         {:else if editingObs}
-          <button class="link" onclick={() => (editingObs = false)}>Done</button>
+          <button
+            class="link"
+            onclick={() => {
+              editingObs = false;
+              void save();
+            }}>Done</button
+          >
         {/if}
       </div>
       {#if editObs && !editingObs}
@@ -174,7 +201,13 @@
         {#if editNext && !editingNext}
           <button class="link" onclick={() => (editingNext = true)}>✎ Edit</button>
         {:else if editingNext}
-          <button class="link" onclick={() => (editingNext = false)}>Done</button>
+          <button
+            class="link"
+            onclick={() => {
+              editingNext = false;
+              void save();
+            }}>Done</button
+          >
         {/if}
       </div>
       {#if editNext && !editingNext}
@@ -185,12 +218,23 @@
         ></textarea>
       {/if}
     </div>
-    <button class="status-G" onclick={save}>Save</button>
-    {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
   </div>
 {/if}
 
 <style>
+  .weekhead {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .weekhead h3 {
+    margin: 0;
+  }
+  .save-ind {
+    margin-left: auto;
+  }
   .weeklist {
     display: flex;
     flex-direction: column;
