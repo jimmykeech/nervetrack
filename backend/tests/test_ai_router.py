@@ -33,6 +33,32 @@ def test_chat_requires_config(auth_client):
     assert r.json()["detail"] == "llm_not_configured"
 
 
+def test_save_settings_rejects_private_base_url(auth_client):
+    # auth_client runs in password (multi-user) mode.
+    r = auth_client.put("/api/v1/ai/settings", json={
+        "provider": "ollama", "model": "ollama/llama3.1", "base_url": "http://10.0.0.1:11434",
+    })
+    assert r.status_code == 400
+
+
+def test_chat_blocked_when_stored_base_url_no_longer_allowed(auth_client, db, user_id):
+    # Simulate a base_url stored before this guard existed (or one that
+    # became disallowed since, e.g. an auth_mode change) by writing it
+    # directly rather than through save_settings.
+    db.execute(
+        """
+        INSERT INTO llm_settings (user_id, provider, model, base_url, updated_at)
+        VALUES (?, 'ollama', 'ollama/llama3.1', 'http://127.0.0.1:11434',
+                strftime('%Y-%m-%dT%H:%M:%f','now'))
+        """,
+        [user_id],
+    )
+    conv = auth_client.post("/api/v1/ai/conversations").json()
+    r = auth_client.post(f"/api/v1/ai/conversations/{conv['id']}/messages",
+                         json={"content": "hi"})
+    assert r.status_code == 403
+
+
 def test_chat_streams_and_persists(auth_client, monkeypatch, db, user_id):
     auth_client.put("/api/v1/ai/settings", json={
         "provider": "anthropic", "model": "anthropic/claude-sonnet-5", "api_key": "k",

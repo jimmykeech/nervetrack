@@ -13,6 +13,16 @@ def _secret(monkeypatch):
     get_settings.cache_clear()
 
 
+@pytest.fixture()
+def none_mode(monkeypatch):
+    # conftest's autouse _cookie_auth_mode fixture defaults every test to
+    # "password"; override back to "none" for the tests that need it.
+    monkeypatch.setenv("NERVETRACK_AUTH_MODE", "none")
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
+
+
 def test_unset_is_not_configured(db, user_id):
     out = llm_settings.get_settings_out(db, user_id)
     assert out.configured is False and out.api_key_set is False
@@ -57,3 +67,24 @@ def test_empty_api_key_clears(db, user_id):
     out = llm_settings.get_settings_out(db, user_id)
     assert out.api_key_set is False
     assert llm_settings.resolve_config(db, user_id).api_key is None
+
+
+def test_save_private_base_url_rejected_multi_user(db, user_id):
+    # conftest defaults auth_mode to "password" (multi-user).
+    with pytest.raises(ValueError):
+        llm_settings.save_settings(
+            db, user_id,
+            LlmSettingsIn(provider="ollama", model="ollama/llama3.1", base_url="http://10.0.0.1:11434"),
+        )
+    # Rejected save must not persist.
+    assert llm_settings.resolve_config(db, user_id) is None
+
+
+def test_save_localhost_base_url_allowed_in_none_mode(db, user_id, none_mode):
+    out = llm_settings.save_settings(
+        db, user_id,
+        LlmSettingsIn(provider="ollama", model="ollama/llama3.1", base_url="http://127.0.0.1:11434"),
+    )
+    assert out.base_url == "http://127.0.0.1:11434"
+    cfg = llm_settings.resolve_config(db, user_id)
+    assert cfg.base_url == "http://127.0.0.1:11434"
