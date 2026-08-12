@@ -3,8 +3,21 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from urllib.parse import urlsplit
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_DEFAULT_PORTS = {"http": 80, "https": 443}
+
+
+def normalize_origin(scheme: str, host: str, port: int | None) -> str:
+    """Lowercase scheme+host+port origin, filling in the scheme's default port.
+
+    Shared by the allowlist parser below and ``services/url_guard.py`` so an
+    entry like ``https://gateway.internal`` matches an incoming
+    ``https://gateway.internal:443`` URL.
+    """
+    return f"{scheme}://{host.lower()}:{port or _DEFAULT_PORTS.get(scheme, 0)}"
 
 
 class Settings(BaseSettings):
@@ -48,8 +61,30 @@ class Settings(BaseSettings):
     # undecryptable. Required before storing an API key.
     secret_key: str = ""
 
+    # Operator escape hatch for the SSRF guard on the per-user LLM base_url
+    # (see services/url_guard.py): comma-separated origins (scheme+host[:port])
+    # that are allowed even though they would otherwise fail the multi-user
+    # https-only / private-address checks, e.g. a deliberately-exposed internal
+    # LLM gateway.
+    llm_allowed_base_urls: str = ""
+
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
+
+    def llm_allowed_base_url_set(self) -> set[str]:
+        origins = set()
+        for entry in self.llm_allowed_base_urls.split(","):
+            entry = entry.strip()
+            if not entry:
+                continue
+            parts = urlsplit(entry)
+            if not parts.scheme or not parts.hostname:
+                continue
+            origins.add(normalize_origin(parts.scheme, parts.hostname, parts.port))
+        return origins
+
+    def is_multi_user(self) -> bool:
+        return self.auth_mode in ("password", "google")
 
 
 @lru_cache
