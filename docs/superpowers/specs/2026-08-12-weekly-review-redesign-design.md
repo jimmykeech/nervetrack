@@ -228,10 +228,16 @@ renamed headings, duplicate headings, or text before the first heading.
 **Empty state.** With no text saved, a block shows a muted line — "No review yet
 — ✨ Draft with AI, or ✎ to write one" — rather than an empty bordered box.
 
-**Saving.** The **Save** button is removed. A debounced `scheduleSave()`
-(~600ms, mirroring `+page.svelte:85-102`) persists on: status pick, trend
-change, Done on either textarea, and an accepted AI draft. `saveState` drives
-the header indicator.
+**Saving.** The **Save** button is removed. `save()` runs immediately on each
+of: status pick, trend change, Done on either textarea, and an accepted AI
+draft. `saveState` drives the header indicator.
+
+No debounce. The Today page debounces because it has free-typing inputs
+(`+page.svelte:85-102`); every control here is a discrete one-shot event, so a
+timer would coalesce nothing while opening a window in which a week switch
+lands the in-flight save on the wrong week. `save()` still captures its target
+`week_start` and re-checks it after the `await` before writing back `selected`
+and `saveState`, because the request itself is a window.
 
 **Drafting.** `✨ Draft with AI` moves to the foot of the review. If either
 field already has content it confirms first — "Replace this week's review with a

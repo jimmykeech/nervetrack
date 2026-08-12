@@ -503,26 +503,26 @@ git commit -m "feat(ai): prompt the weekly drafter for sectioned markdown with h
 
 **Interfaces:**
 - Consumes: `api.saveWeek(weekStart, {overall_status?, key_observations?, trend_vs_last_week?, next_steps?})` (`frontend/src/lib/api.ts:178`).
-- Produces: `saveState: 'idle' | 'saving' | 'saved'`, `scheduleSave()`, and the `.weekhead` wrapper. Tasks 5 and 6 call `scheduleSave()` and render inside `.weekhead`.
+- Produces: `saveState: 'idle' | 'saving' | 'saved'`, `save()`, and the `.weekhead` wrapper. Tasks 5 and 6 call `save()` and render inside `.weekhead`.
 
 This task leaves the page fully working: the controls still look like they do today, but the Save button is gone and edits persist on their own.
 
 **Note — a deliberate behaviour change:** `select()` currently seeds `editStatus` from `w.computed.suggested_status` when no status is saved (`+page.svelte:29`). With auto-save that would silently persist a suggestion the user never chose, so `editStatus` now starts `null` and the suggestion becomes a visible hint in Task 5.
 
-- [ ] **Step 1: Add the save state and debounce**
+- [ ] **Step 1: Add the save state**
+
+**No debounce.** The Today page debounces because it has free-typing inputs; every control on this page is a discrete one-shot event, so a timer would coalesce nothing while opening a window in which switching weeks lands the in-flight save on the wrong week. `save()` runs immediately and guards its own `await` window instead.
 
 In the `<script>` block, add after `let editingNext = $state(false);` (line 16):
 
 ```ts
   let saveState = $state<'idle' | 'saving' | 'saved'>('idle');
-  let saveTimer: ReturnType<typeof setTimeout> | undefined;
 ```
 
 Replace `select()` (lines 27–36) with:
 
 ```ts
   function select(w: WeeklySummary) {
-    if (saveTimer) clearTimeout(saveTimer);
     selected = w;
     // Not `?? w.computed.suggested_status` — with auto-save that would persist a
     // status the user never picked. The suggestion is shown as a hint instead.
@@ -540,23 +540,22 @@ Replace `select()` (lines 27–36) with:
 Replace `save()` (lines 38–49) with:
 
 ```ts
-  function scheduleSave() {
-    saveState = 'saving';
-    if (saveTimer) clearTimeout(saveTimer);
-    saveTimer = setTimeout(save, 700);
-  }
-
   async function save() {
     if (!selected) return;
+    const target = selected.week_start;
+    saveState = 'saving';
     // All four fields go every time: save_week is a full overwrite, so an
     // omitted field is persisted as NULL.
-    const updated = await api.saveWeek(selected.week_start, {
+    const updated = await api.saveWeek(target, {
       overall_status: editStatus ?? undefined,
       key_observations: editObs || undefined,
       trend_vs_last_week: editTrend || undefined,
       next_steps: editNext || undefined
     });
     weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
+    // The user may have switched weeks while the request was in flight; writing
+    // back then would clobber the newly selected week with this one's data.
+    if (selected?.week_start !== target) return;
     selected = updated;
     saveState = 'saved';
   }
@@ -564,7 +563,7 @@ Replace `save()` (lines 38–49) with:
 
 - [ ] **Step 2: Wire the existing controls to it**
 
-In `draftWithAi()` (lines 51–69), replace `message = 'Draft ready — review and Save.';` with `scheduleSave();`.
+In `draftWithAi()` (lines 51–69), replace `message = 'Draft ready — review and Save.';` with `void save();`.
 
 Replace the header line (line 96):
 
@@ -584,7 +583,7 @@ with:
     </div>
 ```
 
-In the status buttons (lines 135–140), add `scheduleSave()`:
+In the status buttons (lines 135–140), add the save call:
 
 ```svelte
         {#each ['G', 'A', 'R'] as s}
@@ -592,7 +591,7 @@ In the status buttons (lines 135–140), add `scheduleSave()`:
             class="opt {editStatus === s ? `status-${s}` : ''}"
             onclick={() => {
               editStatus = s as Status;
-              scheduleSave();
+              void save();
             }}>{s}</button
           >
         {/each}
@@ -601,17 +600,17 @@ In the status buttons (lines 135–140), add `scheduleSave()`:
 On the trend select (line 145), add a change handler:
 
 ```svelte
-      <select bind:value={editTrend} onchange={scheduleSave}>
+      <select bind:value={editTrend} onchange={() => void save()}>
 ```
 
 On the two `Done` buttons (lines 161 and 177), save on collapse:
 
 ```svelte
-          <button class="link" onclick={() => { editingObs = false; scheduleSave(); }}>Done</button>
+          <button class="link" onclick={() => { editingObs = false; void save(); }}>Done</button>
 ```
 
 ```svelte
-          <button class="link" onclick={() => { editingNext = false; scheduleSave(); }}>Done</button>
+          <button class="link" onclick={() => { editingNext = false; void save(); }}>Done</button>
 ```
 
 Delete the Save button and its message span (lines 188–189):
@@ -721,7 +720,7 @@ Replace both `<div class="field">` blocks for Key observations and Next steps (l
               class="link"
               onclick={() => {
                 editingObs = false;
-                scheduleSave();
+                void save();
               }}>Done</button
             >
           {/if}
@@ -753,7 +752,7 @@ Replace both `<div class="field">` blocks for Key observations and Next steps (l
               class="link"
               onclick={() => {
                 editingNext = false;
-                scheduleSave();
+                void save();
               }}>Done</button
             >
           {/if}
@@ -886,7 +885,7 @@ git commit -m "feat(weekly): present the review as a document with section label
 - Modify: `frontend/src/routes/weekly/+page.svelte`
 
 **Interfaces:**
-- Consumes: `scheduleSave()` from Task 4; `.weekhead` from Task 4; `statusClass` (line 19).
+- Consumes: `save()` from Task 4; `.weekhead` from Task 4; `statusClass` (line 19).
 - Produces: nothing downstream — this is the last task.
 
 - [ ] **Step 1: Add the expansion state and handler**
@@ -905,13 +904,13 @@ Add to `select()`, after `editingNext = false;`:
     editingTrend = false;
 ```
 
-Add a handler beside `scheduleSave()`:
+Add a handler beside `save()`:
 
 ```ts
   function pickStatus(s: Status) {
     editStatus = s;
     editingStatus = false;
-    scheduleSave();
+    void save();
   }
 ```
 
@@ -951,7 +950,7 @@ Replace the `.weekhead` block from Task 4 with:
           bind:value={editTrend}
           onchange={() => {
             editingTrend = false;
-            scheduleSave();
+            void save();
           }}
         >
           <option value="">—</option>
