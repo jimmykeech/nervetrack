@@ -118,6 +118,23 @@ def test_import_full_workbook(db, user_id):
     assert plank["hold_seconds"] == 45 and plank["reps"] is None
 
 
+def test_import_carries_day_intensity_onto_session(db, user_id):
+    """The importer's one-session-per-day rows should take the day's Session Intensity."""
+    content = _build_workbook()
+    service.import_workbook(db, user_id, content)
+
+    row = db.query_one(
+        """
+        SELECT s.intensity, d.session_intensity AS day_intensity
+        FROM strength_sessions s
+        JOIN daily_entries d ON d.id = s.daily_entry_id
+        WHERE d.entry_date = '2026-06-12'
+        """
+    )
+    assert row is not None
+    assert row["intensity"] == row["day_intensity"] == 6
+
+
 def test_import_is_idempotent(db, user_id):
     content = _build_workbook()
     service.import_workbook(db, user_id, content)
