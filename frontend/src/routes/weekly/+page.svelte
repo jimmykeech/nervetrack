@@ -14,6 +14,14 @@
   let message = $state('');
   let editingObs = $state(false);
   let editingNext = $state(false);
+  let editingStatus = $state(false);
+  let editingTrend = $state(false);
+  let saveState = $state<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  let saveError = $state('');
+  // Identifies the one draft request allowed to land. Comparing the week alone
+  // is not enough: leaving a week and coming back would make an abandoned
+  // request current again and let it overwrite what you typed meanwhile.
+  let draftSeq = 0;
 
   const trends = ['Better', 'Same', 'Slightly Worse', 'Worse'];
   const statusClass: Record<string, string> = { G: 'status-G', A: 'status-A', R: 'status-R' };
@@ -25,46 +33,88 @@
   onMount(load);
 
   function select(w: WeeklySummary) {
+    // Abandon any in-flight draft: its result is stale the moment you leave.
+    draftSeq += 1;
     selected = w;
-    editStatus = w.overall_status ?? w.computed.suggested_status ?? null;
+    // Not `?? w.computed.suggested_status` — with auto-save that would persist a
+    // status the user never picked. The suggestion is shown as a hint instead.
+    editStatus = w.overall_status ?? null;
     editObs = w.key_observations ?? '';
     editTrend = w.trend_vs_last_week ?? '';
     editNext = w.next_steps ?? '';
     editingObs = false;
     editingNext = false;
+    editingStatus = false;
+    editingTrend = false;
+    drafting = false;
+    saveState = 'idle';
+    saveError = '';
     message = '';
   }
 
   async function save() {
     if (!selected) return;
-    const updated = await api.saveWeek(selected.week_start, {
-      overall_status: editStatus ?? undefined,
-      key_observations: editObs || undefined,
-      trend_vs_last_week: editTrend || undefined,
-      next_steps: editNext || undefined
-    });
-    message = 'Saved ✓';
-    weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
-    selected = updated;
+    const target = selected.week_start;
+    saveState = 'saving';
+    saveError = '';
+    try {
+      // All four fields go every time: save_week is a full overwrite, so an
+      // omitted field is persisted as NULL.
+      const updated = await api.saveWeek(target, {
+        overall_status: editStatus ?? undefined,
+        key_observations: editObs || undefined,
+        trend_vs_last_week: editTrend || undefined,
+        next_steps: editNext || undefined
+      });
+      weeks = weeks.map((w) => (w.week_start === updated.week_start ? updated : w));
+      // The user may have switched weeks while the request was in flight;
+      // writing back then would clobber the newly selected week with this
+      // one's data.
+      if (selected?.week_start !== target) return;
+      selected = updated;
+      saveState = 'saved';
+    } catch (e) {
+      // Auto-save is the only persistence path now: a silent failure would
+      // hang the indicator on "Saving…" and drop the edit without a word.
+      if (selected?.week_start !== target) return;
+      saveError = (e as Error).message;
+      saveState = 'error';
+    }
+  }
+
+  function pickStatus(s: Status) {
+    editStatus = s;
+    editingStatus = false;
+    void save();
   }
 
   async function draftWithAi() {
     if (!selected) return;
+    if ((editObs || editNext) && !confirm("Replace this week's review with a new AI draft?"))
+      return;
+    const target = selected.week_start;
+    const seq = (draftSeq += 1);
     drafting = true;
     message = '';
     try {
-      const d = await api.weeklyDraft(selected.week_start);
+      const d = await api.weeklyDraft(target);
+      // Drafting takes tens of seconds and the week list stays clickable. Only
+      // the newest request, still on its own week, may land — otherwise the
+      // finished prose would be auto-saved over whatever is on screen now.
+      if (seq !== draftSeq || selected?.week_start !== target) return;
       editObs = d.key_observations;
       editNext = d.next_steps;
       editingObs = false;
       editingNext = false;
-      message = 'Draft ready — review and Save.';
+      void save();
     } catch (e) {
+      if (seq !== draftSeq || selected?.week_start !== target) return;
       message = (e as Error).message.startsWith('409')
         ? 'Configure a model in Settings first.'
         : (e as Error).message;
     } finally {
-      drafting = false;
+      // A superseded request must not re-enable the button under a live one.
+      if (seq === draftSeq) drafting = false;
     }
   }
 </script>
@@ -93,104 +143,168 @@
 
 {#if selected}
   <div class="card">
-    <h3 style="margin-top: 0">{selected.week_start} → {selected.week_end}</h3>
-    <div class="metrics">
-      <div>
-        <span class="muted small">Sessions</span><strong
-          >{selected.computed.strengthening_sessions}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Avg episodes/day</span><strong
-          >{selected.computed.avg_pain_episodes_per_day ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Avg tingling</span><strong
-          >{selected.computed.avg_tingling_level ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Worst pain</span><strong
-          >{selected.computed.worst_pain ?? '—'}</strong
-        >
-      </div>
-      <div>
-        <span class="muted small">Days logged</span><strong>{selected.computed.days_logged}</strong>
-      </div>
-      <div>
-        <span class="muted small">Sitting</span><strong
-          >{Math.round(selected.computed.sitting_minutes / 60)}h</strong
-        >
-      </div>
-    </div>
-    <p class="muted small">
-      G/A/R days: {selected.computed.green_days}/{selected.computed.amber_days}/{selected.computed
-        .red_days} · suggested status <strong>{selected.computed.suggested_status}</strong>
-    </p>
+    <div class="weekhead">
+      <h3>{selected.week_start} → {selected.week_end}</h3>
 
-    <div class="field">
-      <label>Overall status</label>
-      <div class="row">
-        {#each ['G', 'A', 'R'] as s}
-          <button
-            class="opt {editStatus === s ? `status-${s}` : ''}"
-            onclick={() => (editStatus = s as Status)}>{s}</button
-          >
-        {/each}
-      </div>
+      {#if editingStatus}
+        <span class="statuspick">
+          {#each ['G', 'A', 'R'] as s}
+            <button class="pill {statusClass[s]}" onclick={() => pickStatus(s as Status)}
+              >{s}</button
+            >
+          {/each}
+        </span>
+      {:else if editStatus}
+        <button
+          class="pill {statusClass[editStatus]}"
+          aria-label="Change overall status"
+          onclick={() => (editingStatus = true)}>{editStatus}</button
+        >
+      {:else}
+        <button class="pill unset" onclick={() => (editingStatus = true)}>Set status</button>
+        <span class="muted small">suggested {selected.computed.suggested_status}</span>
+      {/if}
+
+      {#if editingTrend}
+        <select
+          bind:value={editTrend}
+          onchange={() => {
+            editingTrend = false;
+            void save();
+          }}
+          onblur={() => (editingTrend = false)}
+        >
+          <option value="">—</option>
+          {#each trends as t}<option value={t}>{t}</option>{/each}
+        </select>
+      {:else}
+        <button
+          class="pill"
+          aria-label="Change trend vs last week"
+          onclick={() => (editingTrend = true)}>{editTrend || 'Set trend'}</button
+        >
+      {/if}
+
+      <span class="save-ind">
+        {#if saveState === 'saving'}<span class="saving">Saving…</span>
+        {:else if saveState === 'saved'}<span class="saved">Saved ✓</span>
+        {:else if saveState === 'error'}<span class="savefail" title={saveError}>Save failed</span
+          >{/if}
+      </span>
     </div>
-    <div class="field">
-      <label>Trend vs last week</label>
-      <select bind:value={editTrend}>
-        <option value="">—</option>
-        {#each trends as t}<option value={t}>{t}</option>{/each}
-      </select>
+    <div class="strip tnum">
+      <span><strong>{selected.computed.strengthening_sessions}</strong> sessions</span>
+      <span><strong>{selected.computed.avg_pain_episodes_per_day ?? '—'}</strong> episodes/day</span
+      >
+      <span><strong>{selected.computed.avg_tingling_level ?? '—'}</strong> tingling</span>
+      <span><strong>{selected.computed.worst_pain ?? '—'}</strong> worst pain</span>
+      <span><strong>{selected.computed.days_logged}</strong> days</span>
+      <span><strong>{Math.round(selected.computed.sitting_minutes / 60)}h</strong> sitting</span>
+      <span
+        ><strong
+          >{selected.computed.green_days}/{selected.computed.amber_days}/{selected.computed
+            .red_days}</strong
+        > G/A/R</span
+      >
     </div>
-    <div class="field">
+
+    <div class="review">
+      <section class="block">
+        <div class="blockhead">
+          <span class="label-caps">Key observations</span>
+          {#if editObs && !editingObs}
+            <button
+              class="link"
+              aria-label="Edit key observations"
+              onclick={() => (editingObs = true)}>✎ Edit</button
+            >
+          {:else if editingObs}
+            <button
+              class="link"
+              onclick={() => {
+                editingObs = false;
+                void save();
+              }}>Done</button
+            >
+          {/if}
+        </div>
+        {#if editingObs}
+          <textarea
+            bind:value={editObs}
+            rows="16"
+            aria-label="Key observations markdown"
+            placeholder="What stood out this week…"
+          ></textarea>
+        {:else if editObs}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+          <div class="markdown">{@html renderMarkdown(editObs)}</div>
+        {:else}
+          <p class="muted small empty">No review yet — ✨ Draft with AI, or ✎ to write one.</p>
+        {/if}
+      </section>
+
+      <section class="block">
+        <div class="blockhead">
+          <span class="label-caps">Next steps</span>
+          {#if editNext && !editingNext}
+            <button class="link" aria-label="Edit next steps" onclick={() => (editingNext = true)}
+              >✎ Edit</button
+            >
+          {:else if editingNext}
+            <button
+              class="link"
+              onclick={() => {
+                editingNext = false;
+                void save();
+              }}>Done</button
+            >
+          {/if}
+        </div>
+        {#if editingNext}
+          <textarea
+            bind:value={editNext}
+            rows="8"
+            aria-label="Next steps markdown"
+            placeholder="Plan for the upcoming week…"
+          ></textarea>
+        {:else if editNext}
+          <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
+          <div class="markdown">{@html renderMarkdown(editNext)}</div>
+        {:else}
+          <p class="muted small empty">
+            Nothing planned yet — ✨ Draft with AI, or ✎ to write one.
+          </p>
+        {/if}
+      </section>
+    </div>
+    <div class="field draftrow">
       <button class="draft" onclick={draftWithAi} disabled={drafting}>
         {drafting ? 'Drafting…' : '✨ Draft with AI'}
       </button>
+      {#if message}<span class="savefail" style="margin-left: 0.75rem">{message}</span>{/if}
     </div>
-    <div class="field">
-      <div class="fieldhead">
-        <label>Key observations</label>
-        {#if editObs && !editingObs}
-          <button class="link" onclick={() => (editingObs = true)}>✎ Edit</button>
-        {:else if editingObs}
-          <button class="link" onclick={() => (editingObs = false)}>Done</button>
-        {/if}
-      </div>
-      {#if editObs && !editingObs}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
-        <div class="markdown rendered">{@html renderMarkdown(editObs)}</div>
-      {:else}
-        <textarea bind:value={editObs} rows="6" placeholder="What stood out this week…"></textarea>
-      {/if}
-    </div>
-    <div class="field">
-      <div class="fieldhead">
-        <label>Next steps</label>
-        {#if editNext && !editingNext}
-          <button class="link" onclick={() => (editingNext = true)}>✎ Edit</button>
-        {:else if editingNext}
-          <button class="link" onclick={() => (editingNext = false)}>Done</button>
-        {/if}
-      </div>
-      {#if editNext && !editingNext}
-        <!-- eslint-disable-next-line svelte/no-at-html-tags -- renderMarkdown sanitizes via DOMPurify -->
-        <div class="markdown rendered">{@html renderMarkdown(editNext)}</div>
-      {:else}
-        <textarea bind:value={editNext} rows="4" placeholder="Plan for the upcoming week…"
-        ></textarea>
-      {/if}
-    </div>
-    <button class="status-G" onclick={save}>Save</button>
-    {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
   </div>
 {/if}
 
 <style>
+  .weekhead {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+  .weekhead h3 {
+    margin: 0;
+  }
+  .save-ind {
+    margin-left: auto;
+  }
+  /* `.saved` and `.saving` are global in app.css; the failure state is not. */
+  .savefail {
+    font-size: 0.8rem;
+    color: var(--bad);
+  }
   .weeklist {
     display: flex;
     flex-direction: column;
@@ -206,33 +320,21 @@
   .weekchip.sel {
     border-color: var(--accent);
   }
-  .metrics {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 0.75rem;
-    margin-bottom: 0.75rem;
+  button.pill {
+    cursor: pointer;
   }
-  .metrics div {
-    display: flex;
-    flex-direction: column;
+  .pill.unset {
+    border-style: dashed;
+    background: none;
+    color: var(--text-muted);
   }
-  .metrics strong {
-    font-size: 1.2rem;
+  .statuspick {
+    display: inline-flex;
+    gap: 0.3rem;
   }
-  .opt {
-    flex: 1;
-    font-weight: 600;
-  }
-
-  @media (max-width: 640px) {
-    .metrics {
-      grid-template-columns: 1fr;
-    }
-  }
-  .fieldhead {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
+  /* Global `select` is width:100%, which would blow out the header row. */
+  .weekhead select {
+    width: auto;
   }
   .link {
     border: none;
@@ -241,11 +343,53 @@
     padding: 0;
     font-size: 0.85rem;
   }
-  .rendered {
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 0.5rem 0.75rem;
+
+  .strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    padding: 0.55rem 0.9rem;
     background: var(--surface-2);
+    border-radius: var(--r-pill);
+    margin-bottom: 1.1rem;
+    font-size: 0.8rem;
+    color: var(--text-muted);
+  }
+  .strip strong {
+    color: var(--text);
+    font-size: 0.95rem;
+    margin-right: 0.2rem;
+  }
+
+  .review {
+    max-width: 62ch;
+  }
+  .block + .block {
+    border-top: 1px solid var(--border);
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+  }
+  .blockhead {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.4rem;
+  }
+  /* Sits below the review now, per the spec, so it needs its own separation. */
+  .draftrow {
+    margin-top: 1.25rem;
+  }
+  .empty {
+    margin: 0;
+  }
+  textarea {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
+
+  .markdown {
+    line-height: 1.7;
   }
   .markdown :global(> :first-child) {
     margin-top: 0;
@@ -253,22 +397,37 @@
   .markdown :global(> :last-child) {
     margin-bottom: 0;
   }
+  /* The AI writes `###`; the other levels are styled the same as a fallback,
+     in case the model picks a different one or the user hand-types a heading.
+     Leaving any level out drops it to unstyled browser defaults inside the
+     62ch column, which breaks the small-caps label system. */
   .markdown :global(h1),
   .markdown :global(h2),
-  .markdown :global(h3) {
-    margin: 0.6rem 0 0.3rem;
-    line-height: 1.25;
+  .markdown :global(h3),
+  .markdown :global(h4),
+  .markdown :global(h5),
+  .markdown :global(h6) {
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 1.4rem 0 0.4rem;
   }
   .markdown :global(p),
   .markdown :global(ul),
   .markdown :global(ol) {
-    margin: 0.4rem 0;
+    margin: 0 0 0.85rem;
   }
   .markdown :global(ul),
   .markdown :global(ol) {
     padding-left: 1.25rem;
   }
   .markdown :global(li) {
-    margin: 0.15rem 0;
+    margin: 0.25rem 0;
+  }
+  .markdown :global(strong) {
+    color: var(--text);
   }
 </style>

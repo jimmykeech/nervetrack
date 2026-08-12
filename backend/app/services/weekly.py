@@ -169,8 +169,10 @@ def list_weeks(db: Database, user_id: UUID) -> list[WeeklySummary]:
 def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, Any]:
     """Serialisable bundle of a user's week of data.
 
-    Phase 2 will feed this into the Claude API as context; keeping it as one
-    clean service function now means the AI layer needs no new queries.
+    Deliberately lean: this is also the ``get_week_summary`` chat tool
+    (``app/services/ai_tools.py``), where extra context would be duplicated
+    across every tool call and is not what the tool's description advertises.
+    The weekly-review drafter wants history too — see ``get_draft_bundle``.
     """
     from app.services import entries as entries_service
 
@@ -182,9 +184,59 @@ def get_week_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, 
         if entry is not None:
             days.append(entry.model_dump(mode="json"))
         cursor += timedelta(days=1)
+
     return {
         "week_start": week_start.isoformat(),
         "week_end": week_end.isoformat(),
         "summary": get_week(db, user_id, week_start).model_dump(mode="json"),
         "days": days,
     }
+
+
+def get_draft_bundle(db: Database, user_id: UUID, week_start: date) -> dict[str, Any]:
+    """The weekly-review drafter's bundle: one week plus program history.
+
+    ``history`` carries every prior week's computed metrics (no day-level data)
+    so the drafter can compare this week against earlier ones by program week
+    number. ``recent_reviews`` carries the last three saved reviews for
+    narrative continuity.
+    """
+    bundle = get_week_bundle(db, user_id, week_start)
+
+    # list_weeks returns newest-first; number the weeks oldest-first so week 1
+    # is the first week containing any logged entry.
+    tracked = sorted(list_weeks(db, user_id), key=lambda w: w.week_start)
+    numbers = {w.week_start: i for i, w in enumerate(tracked, start=1)}
+    prior = [w for w in tracked if w.week_start < week_start]
+
+    history = [
+        {
+            "program_week": numbers[w.week_start],
+            "week_start": w.week_start.isoformat(),
+            "overall_status": w.overall_status,
+            "trend_vs_last_week": w.trend_vs_last_week,
+            **w.computed.model_dump(mode="json"),
+        }
+        for w in prior
+    ]
+    reviewed = [w for w in prior if w.key_observations][-3:]
+    recent_reviews = [
+        {
+            "program_week": numbers[w.week_start],
+            "week_start": w.week_start.isoformat(),
+            "key_observations": w.key_observations,
+            "next_steps": w.next_steps,
+        }
+        for w in reversed(reviewed)
+    ]
+
+    # A week earlier than the whole program is week 1, not one past the end.
+    if not tracked or week_start < tracked[0].week_start:
+        program_week = 1
+    else:
+        program_week = numbers.get(week_start, len(tracked) + 1)
+
+    bundle["program_week"] = program_week
+    bundle["history"] = history
+    bundle["recent_reviews"] = recent_reviews
+    return bundle

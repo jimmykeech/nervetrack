@@ -24,6 +24,9 @@ SYSTEM_PROMPT = (
     "encouraging. Dates are ISO (YYYY-MM-DD)."
 )
 
+KEY_MARKER = "<<<KEY_OBSERVATIONS>>>"
+NEXT_MARKER = "<<<NEXT_STEPS>>>"
+
 
 def _completion_kwargs(config: ResolvedLlmConfig) -> dict[str, Any]:
     kwargs: dict[str, Any] = {"model": config.model}
@@ -101,24 +104,68 @@ async def stream_chat(
     yield {"type": "final", "content": final.choices[0].message.content or ""}
 
 
+def _strip_markers(text: str) -> str:
+    """Drop any stray marker the model echoed back, so none reaches the user."""
+    return text.replace(KEY_MARKER, "").replace(NEXT_MARKER, "").strip()
+
+
+def _parse_draft(raw: str) -> WeeklyDraftResponse:
+    """Split a delimited draft into its two fields.
+
+    Never raises: a malformed reply still yields something the user can edit
+    rather than a 500. Delimiters are used instead of JSON because the payload
+    is multi-line markdown, which models routinely fail to escape inside a JSON
+    string value.
+
+    Markers are located by position rather than by membership, so a reply that
+    carries only the NEXT marker still splits correctly instead of dumping the
+    marker text into key_observations. Repeated markers are stripped: the
+    prompt instructs the model to emit these exact strings, so a model echoing
+    its own instructions is a realistic reply, and the result is rendered
+    straight to the user.
+    """
+    key_at = raw.find(KEY_MARKER)
+    body = raw[key_at + len(KEY_MARKER) :] if key_at != -1 else raw
+    next_at = body.find(NEXT_MARKER)
+    if next_at == -1:
+        obs, nxt = body, ""
+    else:
+        obs = body[:next_at]
+        nxt = body[next_at + len(NEXT_MARKER) :]
+    return WeeklyDraftResponse(
+        key_observations=_strip_markers(obs), next_steps=_strip_markers(nxt)
+    )
+
+
 async def draft_weekly(
     config: ResolvedLlmConfig, bundle: dict, extra_context: str = ""
 ) -> WeeklyDraftResponse:
     prompt = (
-        "Draft this week's review from the JSON data below. Respond with ONLY a JSON "
-        'object: {"key_observations": <retrospective narrative of what happened, in '
-        'the user\'s established concise style>, "next_steps": <forward-looking '
-        "suggestions/plan for the upcoming week>}. No prose outside the JSON.\n\n"
-        + json.dumps(bundle, default=str)
+        "Draft this week's review from the JSON data below.\n\n"
+        "Write both fields as markdown. Structure the key observations with `###` "
+        "headings drawn from this menu, using ONLY the sections this week's data "
+        "supports — skip any you would have to pad:\n\n"
+        "  ### The week at a glance   — the headline numbers and how they compare\n"
+        "  ### What stood out         — the notable events, sessions, and symptoms\n"
+        "  ### Analysis               — why it matters\n"
+        "  ### Watch-outs             — anything to keep an eye on\n\n"
+        "Open Analysis with a single bolded sentence naming the most significant "
+        "thing in this week's data, then argue it from the sequence of days: name "
+        "the days, the numbers, and the exercises involved. Where `history` "
+        'supports it, compare against earlier program weeks by number (e.g. "matching '
+        'W8, W11, W17"). Never cite a week that is not present in `history`, and '
+        "never invent a number.\n\n"
+        "`recent_reviews` shows what you already told the user in previous weeks — "
+        "build on it and note what changed; never repeat it back.\n\n"
+        "Aim for 350-500 words of key observations and 100-150 words of next steps. "
+        "Write next steps as a short lead sentence followed by a numbered list.\n\n"
+        "Respond in exactly this format, with no prose outside it:\n\n"
+        f"{KEY_MARKER}\n(markdown)\n{NEXT_MARKER}\n(markdown)\n\n"
+        "DATA:\n" + json.dumps(bundle, default=str)
     )
     resp = await litellm.acompletion(
         messages=[{"role": "system", "content": _system(extra_context)},
                   {"role": "user", "content": prompt}],
         **_completion_kwargs(config),
     )
-    raw = resp.choices[0].message.content or "{}"
-    data = json.loads(raw[raw.find("{"): raw.rfind("}") + 1])
-    return WeeklyDraftResponse(
-        key_observations=data.get("key_observations", ""),
-        next_steps=data.get("next_steps", ""),
-    )
+    return _parse_draft(resp.choices[0].message.content or "")
