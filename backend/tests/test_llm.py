@@ -27,6 +27,20 @@ def cfg():
     return ResolvedLlmConfig(model="anthropic/claude-sonnet-5", api_key="k")
 
 
+async def test_litellm_http_clients_disable_redirects_and_restore_globals():
+    previous_async = llm.litellm.aclient_session
+    previous_sync = llm.litellm.client_session
+
+    async with llm.litellm_http_clients():
+        assert llm.litellm.aclient_session.follow_redirects is False
+        assert llm.litellm.client_session.follow_redirects is False
+        assert llm.litellm.aclient_session is not previous_async
+        assert llm.litellm.client_session is not previous_sync
+
+    assert llm.litellm.aclient_session is previous_async
+    assert llm.litellm.client_session is previous_sync
+
+
 async def test_stream_chat_plain_answer(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         return _aiter([_chunk(content="Hel"), _chunk(content="lo")])

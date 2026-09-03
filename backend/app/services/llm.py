@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import AsyncIterator, Callable
+from contextlib import asynccontextmanager
 from typing import Any
 
+import httpx
 import litellm
 
 from app.models.ai import ResolvedLlmConfig, WeeklyDraftResponse
@@ -26,6 +28,24 @@ SYSTEM_PROMPT = (
 
 KEY_MARKER = "<<<KEY_OBSERVATIONS>>>"
 NEXT_MARKER = "<<<NEXT_STEPS>>>"
+
+
+@asynccontextmanager
+async def litellm_http_clients() -> AsyncIterator[None]:
+    """Install application-owned LiteLLM clients that never follow redirects."""
+    previous_async = litellm.aclient_session
+    previous_sync = litellm.client_session
+    async_client = httpx.AsyncClient(follow_redirects=False)
+    sync_client = httpx.Client(follow_redirects=False)
+    litellm.aclient_session = async_client
+    litellm.client_session = sync_client
+    try:
+        yield
+    finally:
+        litellm.aclient_session = previous_async
+        litellm.client_session = previous_sync
+        await async_client.aclose()
+        sync_client.close()
 
 
 def _completion_kwargs(config: ResolvedLlmConfig) -> dict[str, Any]:
