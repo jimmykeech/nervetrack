@@ -80,6 +80,19 @@ def test_save_private_base_url_rejected_multi_user(db, user_id):
     assert llm_settings.resolve_config(db, user_id) is None
 
 
+def test_save_custom_base_url_rejects_provider_without_guarded_transport(db, user_id):
+    with pytest.raises(ValueError, match="custom base_url requires"):
+        llm_settings.save_settings(
+            db,
+            user_id,
+            LlmSettingsIn(
+                provider="cohere",
+                model="cohere/command-r",
+                base_url="https://llm.example",
+            ),
+        )
+
+
 def test_save_localhost_base_url_allowed_in_none_mode(db, user_id, none_mode):
     out = llm_settings.save_settings(
         db, user_id,

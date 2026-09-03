@@ -14,6 +14,7 @@ import asyncio
 import ipaddress
 import socket
 
+import httpx
 import pytest
 
 from app.config import get_settings
@@ -208,6 +209,37 @@ async def test_resolution_failure_is_a_rejection_async(monkeypatch):
     monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", _boom)
     with pytest.raises(ValueError):
         await url_guard.validate_llm_base_url_async("https://nowhere.invalid")
+
+
+async def test_transport_pins_vetted_address_and_blocks_dns_rebinding(monkeypatch):
+    resolutions = iter(["93.184.216.34", "169.254.169.254"])
+
+    async def _rebind(self, host, *args, **kwargs):
+        address = next(resolutions)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (address, 443))]
+
+    class CaptureTransport(httpx.AsyncBaseTransport):
+        def __init__(self):
+            self.requests: list[httpx.Request] = []
+
+        async def handle_async_request(self, request):
+            self.requests.append(request)
+            return httpx.Response(200, request=request)
+
+    capture = CaptureTransport()
+    transport = url_guard.PinnedAsyncHTTPTransport(capture)
+    monkeypatch.setattr(asyncio.BaseEventLoop, "getaddrinfo", _rebind)
+
+    async with httpx.AsyncClient(transport=transport) as client:
+        await client.get("https://rebind.example/v1")
+        with pytest.raises(ValueError, match="disallowed address"):
+            await client.get("https://rebind.example/v1")
+
+    assert len(capture.requests) == 1
+    request = capture.requests[0]
+    assert request.url.host == "93.184.216.34"
+    assert request.headers["host"] == "rebind.example"
+    assert request.extensions["sni_hostname"] == "rebind.example"
 
 
 # ---- allowlist escape hatch -----------------------------------------------------

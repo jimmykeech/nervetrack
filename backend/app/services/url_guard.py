@@ -11,10 +11,11 @@ private-range ban:
   must not resolve to a loopback, link-local, private, reserved, multicast,
   or unspecified address.
 
-Two entry points share everything except DNS resolution: ``validate_llm_base_url``
-does a blocking ``socket.getaddrinfo`` and is meant for the settings-save path;
-``validate_llm_base_url_async`` uses the running loop's non-blocking resolver
-and is meant for the per-request re-check called from async endpoints.
+Two validation entry points share everything except DNS resolution:
+``validate_llm_base_url`` is blocking for the settings-save path, while
+``validate_llm_base_url_async`` uses the running loop's resolver. Outbound LLM
+requests also use ``PinnedAsyncHTTPTransport``, which connects to the exact
+address that passed the async check instead of resolving the hostname again.
 """
 
 from __future__ import annotations
@@ -24,9 +25,20 @@ import ipaddress
 import socket
 from urllib.parse import urlsplit
 
+import httpx
+
 from app.config import get_settings, normalize_origin
 
 _ALLOWED_SCHEMES = {"http", "https"}
+_CUSTOM_BASE_URL_PROVIDERS = {"ollama", "ollama_chat", "openrouter"}
+
+
+def validate_custom_base_url_model(model: str) -> None:
+    """Fail closed unless LiteLLM has a verified injectable transport path."""
+    provider, separator, _ = model.partition("/")
+    if not separator or provider not in _CUSTOM_BASE_URL_PROVIDERS:
+        supported = ", ".join(sorted(_CUSTOM_BASE_URL_PROVIDERS))
+        raise ValueError(f"custom base_url requires one of these model providers: {supported}")
 
 
 def _parse(url: str) -> tuple[str, str, int | None]:
@@ -105,15 +117,11 @@ def validate_llm_base_url(url: str) -> None:
         _check_addresses({hostname})
 
 
-async def validate_llm_base_url_async(url: str) -> None:
-    """Async twin of ``validate_llm_base_url`` for the request-time re-check.
-
-    Uses the running loop's non-blocking resolver so it is safe to call from
-    async endpoints without stalling the event loop.
-    """
+async def _resolve_allowed_address(url: str) -> tuple[str, str] | None:
+    """Return ``(hostname, vetted IP)`` when multi-user policy applies."""
     prepared = _prepare(url)
     if prepared is None:
-        return
+        return None
     _, hostname = prepared
 
     try:
@@ -121,9 +129,41 @@ async def validate_llm_base_url_async(url: str) -> None:
     except ValueError:
         loop = asyncio.get_running_loop()
         try:
-            infos = await loop.getaddrinfo(hostname, None)
+            infos = await loop.getaddrinfo(hostname, None, type=socket.SOCK_STREAM)
         except OSError as exc:
             raise ValueError(f"could not resolve base_url host: {hostname}") from exc
-        _check_addresses({info[4][0] for info in infos})
-    else:
-        _check_addresses({hostname})
+        addresses = [info[4][0] for info in infos]
+        if not addresses:
+            raise ValueError(f"could not resolve base_url host: {hostname}") from None
+        _check_addresses(set(addresses))
+        return hostname, addresses[0].split("%", 1)[0]
+
+    _check_addresses({hostname})
+    return hostname, hostname
+
+
+async def validate_llm_base_url_async(url: str) -> None:
+    """Async twin of ``validate_llm_base_url`` for the request-time re-check."""
+    await _resolve_allowed_address(url)
+
+
+class PinnedAsyncHTTPTransport(httpx.AsyncBaseTransport):
+    """Validate DNS and connect to the selected vetted address."""
+
+    def __init__(self, transport: httpx.AsyncBaseTransport | None = None) -> None:
+        self._transport = transport or httpx.AsyncHTTPTransport(
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=0)
+        )
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        resolved = await _resolve_allowed_address(str(request.url))
+        if resolved is not None:
+            hostname, address = resolved
+            # HTTPX built the Host header from the original URL. Keep it and
+            # preserve the original TLS name while connecting to the vetted IP.
+            request.url = request.url.copy_with(host=address)
+            request.extensions["sni_hostname"] = hostname
+        return await self._transport.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._transport.aclose()

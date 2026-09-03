@@ -12,8 +12,10 @@ from typing import Any
 
 import httpx
 import litellm
+from litellm.llms.custom_httpx.http_handler import AsyncHTTPHandler
 
 from app.models.ai import ResolvedLlmConfig, WeeklyDraftResponse
+from app.services import url_guard
 from app.services.ai_tools import TOOL_SCHEMAS
 
 SYSTEM_PROMPT = (
@@ -30,20 +32,48 @@ KEY_MARKER = "<<<KEY_OBSERVATIONS>>>"
 NEXT_MARKER = "<<<NEXT_STEPS>>>"
 
 
+class _GuardedLiteLLMHTTPHandler(AsyncHTTPHandler):
+    """Keep LiteLLM's provider-specific requests and retries on the guarded transport."""
+
+    def create_client(
+        self,
+        timeout: float | httpx.Timeout | None,
+        event_hooks: Any,
+        ssl_verify: Any = None,
+        shared_session: Any = None,
+    ) -> httpx.AsyncClient:
+        del ssl_verify, shared_session
+        return httpx.AsyncClient(
+            transport=url_guard.PinnedAsyncHTTPTransport(),
+            timeout=timeout,
+            event_hooks=event_hooks,
+            follow_redirects=False,
+        )
+
+
+_guarded_litellm_handler: _GuardedLiteLLMHTTPHandler | None = None
+
+
 @asynccontextmanager
 async def litellm_http_clients() -> AsyncIterator[None]:
-    """Install application-owned LiteLLM clients that never follow redirects."""
+    """Install application-owned LiteLLM clients and the custom-URL guard."""
+    global _guarded_litellm_handler
     previous_async = litellm.aclient_session
     previous_sync = litellm.client_session
+    previous_handler = _guarded_litellm_handler
     async_client = httpx.AsyncClient(follow_redirects=False)
     sync_client = httpx.Client(follow_redirects=False)
+    guarded_handler = _GuardedLiteLLMHTTPHandler()
     litellm.aclient_session = async_client
     litellm.client_session = sync_client
+    _guarded_litellm_handler = guarded_handler
     try:
         yield
     finally:
+        _guarded_litellm_handler = previous_handler
         litellm.aclient_session = previous_async
         litellm.client_session = previous_sync
+        await guarded_handler.close()
         await async_client.aclose()
         sync_client.close()
 
@@ -53,7 +83,11 @@ def _completion_kwargs(config: ResolvedLlmConfig) -> dict[str, Any]:
     if config.api_key:
         kwargs["api_key"] = config.api_key
     if config.base_url:
+        url_guard.validate_custom_base_url_model(config.model)
         kwargs["api_base"] = config.base_url
+        if _guarded_litellm_handler is None:
+            raise RuntimeError("LLM HTTP client is not configured")
+        kwargs["client"] = _guarded_litellm_handler
     return kwargs
 
 
