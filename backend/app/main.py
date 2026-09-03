@@ -25,6 +25,7 @@ from app.routers import (
     weekly,
 )
 from app.services.backfill_overnight import backfill_overnight
+from app.services.llm import litellm_http_clients
 
 API_PREFIX = "/api/v1"
 
@@ -34,7 +35,8 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     db = init_db(settings.db_path)
     backfill_overnight(db)
-    yield
+    async with litellm_http_clients():
+        yield
 
 
 def create_app() -> FastAPI:
