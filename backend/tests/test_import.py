@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import io
+import zipfile
 
+import pytest
 from openpyxl import Workbook
 
 from app.services import xlsx_import as service
@@ -65,6 +67,41 @@ def _build_workbook() -> bytes:
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()
+
+
+def test_import_endpoint_rejects_oversized_upload(auth_client, monkeypatch):
+    from app.routers import imports
+
+    monkeypatch.setattr(imports, "MAX_UPLOAD_BYTES", 8)
+    response = auth_client.post(
+        "/api/v1/import/xlsx",
+        files={
+            "file": (
+                "tracker.xlsx",
+                b"x" * 9,
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        },
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "Workbook is too large"
+
+
+def test_import_rejects_highly_compressed_archive(db, user_id):
+    archive = io.BytesIO()
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as workbook:
+        workbook.writestr("xl/worksheets/sheet1.xml", b"x" * 10_000)
+
+    with pytest.raises(ValueError, match="compression ratio"):
+        service.import_workbook(db, user_id, archive.getvalue())
+
+
+def test_import_rejects_worksheet_over_row_limit(db, user_id, monkeypatch):
+    monkeypatch.setattr(service, "MAX_WORKSHEET_ROWS", 5)
+
+    with pytest.raises(ValueError, match="row limit"):
+        service.import_workbook(db, user_id, _build_workbook())
 
 
 def test_parse_duration_minutes():
