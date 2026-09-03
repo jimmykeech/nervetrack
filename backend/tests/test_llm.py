@@ -41,6 +41,26 @@ async def test_litellm_http_clients_disable_redirects_and_restore_globals():
     assert llm.litellm.client_session is previous_sync
 
 
+async def test_custom_base_url_uses_guarded_provider_client():
+    async with llm.litellm_http_clients():
+        ollama = ResolvedLlmConfig(
+            model="ollama_chat/llama3",
+            api_key=None,
+            base_url="https://llm.example",
+        )
+        kwargs = llm._completion_kwargs(ollama)
+        assert kwargs["client"] is llm._guarded_litellm_handler
+        assert kwargs["client"].client.follow_redirects is False
+
+        unsupported = ResolvedLlmConfig(
+            model="cohere/command-r",
+            api_key="k",
+            base_url="https://llm.example",
+        )
+        with pytest.raises(ValueError, match="custom base_url requires"):
+            llm._completion_kwargs(unsupported)
+
+
 async def test_stream_chat_plain_answer(monkeypatch, cfg):
     async def fake_acompletion(**kwargs):
         return _aiter([_chunk(content="Hel"), _chunk(content="lo")])

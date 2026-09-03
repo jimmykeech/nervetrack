@@ -16,7 +16,7 @@ dependencies = [
     "requests>=2.31",
     "passlib[argon2]>=1.7",
     "email-validator>=2.1",
-    "litellm>=1.55",
+    "litellm>=1.99,<1.100",
     "cryptography>=43",
 ]
 

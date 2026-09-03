@@ -52,6 +52,7 @@ def save_settings(db: Database, user_id: UUID, data: LlmSettingsIn) -> LlmSettin
 
     base_url = data.base_url or None
     if base_url is not None:
+        url_guard.validate_custom_base_url_model(data.model)
         url_guard.validate_llm_base_url(base_url)  # raises ValueError -> 400
     with db.cursor():
         db.execute(
@@ -91,6 +92,7 @@ async def resolve_config_async(db: Database, user_id: UUID) -> ResolvedLlmConfig
     config = resolve_config(db, user_id)
     if config is not None and config.base_url:
         try:
+            url_guard.validate_custom_base_url_model(config.model)
             await url_guard.validate_llm_base_url_async(config.base_url)
         except ValueError as exc:
             raise LlmBaseUrlBlocked(str(exc)) from exc
