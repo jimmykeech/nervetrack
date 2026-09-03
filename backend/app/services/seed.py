@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+from app.config import get_settings
+
 if TYPE_CHECKING:
     from app.db import Database
 
@@ -37,6 +39,9 @@ SETTINGS_SEED: dict[str, str] = {
 
 def seed_user(db: Database, user_id: UUID) -> None:
     """Seed a new account with the exercise catalogue and default settings."""
+    settings_seed = SETTINGS_SEED | {
+        "week_start_day": str(get_settings().week_start_day),
+    }
     with db.cursor():
         for order, name in enumerate(EXERCISE_SEED):
             db.execute(
@@ -47,7 +52,7 @@ def seed_user(db: Database, user_id: UUID) -> None:
                 """,
                 [user_id, name, order],
             )
-        for key, value in SETTINGS_SEED.items():
+        for key, value in settings_seed.items():
             db.execute(
                 """
                 INSERT INTO app_settings (user_id, key, value) VALUES (?, ?, ?)

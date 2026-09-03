@@ -35,6 +35,7 @@ def _cookie_auth_mode(monkeypatch):
     # That pollution happens once at import time, before any fixture runs, so it
     # must be overridden per-test rather than merely left unset.
     monkeypatch.setenv("NERVETRACK_TIMEZONE", "UTC")
+    monkeypatch.setenv("NERVETRACK_WEEK_START_DAY", "0")
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
