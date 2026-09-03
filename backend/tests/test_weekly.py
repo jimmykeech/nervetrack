@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
+from app.config import get_settings
 from app.models.entries import DailyEntryUpsert
 from app.models.weekly import WeeklyUserFields
 from app.services import entries as entries_service
@@ -40,6 +41,17 @@ def test_week_start_for_friday():
     assert week_start_for(date(2026, 6, 13), 4) == date(2026, 6, 12)
     assert week_start_for(date(2026, 6, 12), 4) == date(2026, 6, 12)
     assert week_start_for(date(2026, 6, 11), 4) == date(2026, 6, 5)
+
+
+def test_weekly_aggregation_honours_configured_week_start_day(db, make_user, monkeypatch):
+    monkeypatch.setenv("NERVETRACK_WEEK_START_DAY", "6")
+    get_settings.cache_clear()
+    configured_user = make_user("sunday@example.com", "sub-sunday", "Sunday")
+    _seed_day(db, configured_user, "2026-06-14")
+
+    weeks = service.list_weeks(db, configured_user)
+
+    assert [week.week_start for week in weeks] == [date(2026, 6, 14)]
 
 
 def test_compute_week_metrics(db, user_id):
