@@ -1,7 +1,7 @@
 {
   "@swamp/software-factory": {
     "version": "2026.06.24.1",
-    "pulledAt": "2026-09-03T03:52:32.297Z",
+    "pulledAt": "2026-09-03T03:39:04.504Z",
     "files": [
       ".claude/skills/software-factory",
       ".swamp/bundles/a324fda6/software_factory.js",

@@ -1,6 +1,6 @@
 type: '@swamp/software-factory'
 typeVersion: 2026.06.24.1
-id: 1f1f4caf-cc52-47d0-87cf-818846de1211
+id: 89c7a063-0a4c-4886-95f3-57d291e90150
 name: minimal-factory
 version: 1
 tags: {}
@@ -8,11 +8,11 @@ globalArguments:
   stages:
     - id: work
       initial: true
-      description: Review GitHub issue #32, implement the requested bug fix, and validate the changed behavior.
+      description: Review GitHub issue #33, implement the requested enhancement, and validate the changed behavior.
       work:
         mode: interactive
         systemPrompt: |
-          Inspect issue https://github.com/jimmykeech/nervetrack/issues/32 and the relevant repository code.
+          Inspect issue https://github.com/jimmykeech/nervetrack/issues/33 and the relevant repository code.
           Implement the smallest coherent change that satisfies the acceptance criteria.
           Preserve unrelated work. Add or update one focused regression test when practical.
           Run focused validation and record the review, changes, and validation result.
