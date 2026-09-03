@@ -15,7 +15,7 @@
     utcNaiveToLocalInput,
     localInputToUtcNaive
   } from '$lib/time';
-  import type { Posture } from '$lib/types';
+  import type { Interval, Posture } from '$lib/types';
   import RatioBar from '$lib/components/RatioBar.svelte';
   import TimelineBar from '$lib/components/TimelineBar.svelte';
   import { postureColor, POSTURE_META } from '$lib/posture';
@@ -31,6 +31,14 @@
   let label = $state('');
   let tingleLevel = $state<number | null>(null);
   let editErr = $state('');
+  let timeEditErr = $state('');
+  let editingInterval = $state<Interval | null>(null);
+  let editingField = $state<'started_at' | 'ended_at'>('started_at');
+  let editStart = $state('');
+  let editEnd = $state('');
+  let savingTime = $state(false);
+  let timeDialog: HTMLDialogElement;
+  let timeEditTrigger: HTMLButtonElement | null = null;
   const isToday = $derived(store.date === todayISO());
 
   onMount(() => {
@@ -70,28 +78,72 @@
     return new Date(iso + 'Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   }
 
-  async function editTime(id: string, field: 'started_at' | 'ended_at', current: string | null) {
+  function openTimeEditor(
+    interval: Interval,
+    field: 'started_at' | 'ended_at',
+    trigger: HTMLButtonElement
+  ) {
     editErr = '';
-    const iv = store.intervals.find((x) => x.id === id);
-    const initial = current ? utcNaiveToLocalInput(current) : '';
-    const input = prompt(
-      `New ${field === 'started_at' ? 'start' : 'end'} time (YYYY-MM-DDTHH:MM)`,
-      initial
-    );
-    if (!input) return;
-    const utc = localInputToUtcNaive(input);
-    if (iv) {
-      const start = field === 'started_at' ? utc : iv.started_at;
-      const end = field === 'ended_at' ? utc : iv.ended_at;
-      if (end && !endsAfterStart(start, end)) {
-        editErr = 'End time must be after the start time.';
-        return;
-      }
+    timeEditErr = '';
+    editingInterval = interval;
+    editingField = field;
+    editStart = utcNaiveToLocalInput(interval.started_at);
+    editEnd = interval.ended_at ? utcNaiveToLocalInput(interval.ended_at) : '';
+    timeEditTrigger = trigger;
+    timeDialog.showModal();
+    queueMicrotask(() => {
+      const inputId = field === 'started_at' ? 'interval-start' : 'interval-end';
+      timeDialog.querySelector<HTMLInputElement>(`#${inputId}`)?.focus();
+    });
+  }
+
+  function closeTimeEditor() {
+    timeDialog.close();
+  }
+
+  function handleTimeDialogClose() {
+    editingInterval = null;
+    timeEditErr = '';
+    timeEditTrigger?.focus();
+    timeEditTrigger = null;
+  }
+
+  async function saveTime(event: SubmitEvent) {
+    event.preventDefault();
+    if (!editingInterval) return;
+
+    const start = localInputToUtcNaive(editStart);
+    const end = editingInterval.ended_at ? localInputToUtcNaive(editEnd) : null;
+    if (end && !endsAfterStart(start, end)) {
+      timeEditErr = 'End time must be after the start time.';
+      return;
     }
+
+    const changes: Partial<Interval> = {};
+    if (editStart !== utcNaiveToLocalInput(editingInterval.started_at)) {
+      changes.started_at = start;
+    }
+    if (
+      editingInterval.ended_at &&
+      end &&
+      editEnd !== utcNaiveToLocalInput(editingInterval.ended_at)
+    ) {
+      changes.ended_at = end;
+    }
+    if (Object.keys(changes).length === 0) {
+      timeDialog.close();
+      return;
+    }
+
+    savingTime = true;
+    timeEditErr = '';
     try {
-      await store.editInterval(id, { [field]: utc });
+      await store.editInterval(editingInterval.id, changes);
+      timeDialog.close();
     } catch {
-      editErr = 'Could not save the change.';
+      timeEditErr = 'Could not save the change. Please try again.';
+    } finally {
+      savingTime = false;
     }
   }
 
@@ -228,13 +280,21 @@
             <tr>
               <td>{POSTURE_LABEL[iv.posture]}{iv.label ? ` · ${iv.label}` : ''}</td>
               <td
-                ><button class="link" onclick={() => editTime(iv.id, 'started_at', iv.started_at)}
+                ><button
+                  class="link"
+                  aria-label={`Edit start time for ${POSTURE_LABEL[iv.posture]} interval`}
+                  onclick={(event) =>
+                    openTimeEditor(iv, 'started_at', event.currentTarget as HTMLButtonElement)}
                   >{fmtTime(iv.started_at)}</button
                 ></td
               >
               <td>
                 {#if iv.ended_at}
-                  <button class="link" onclick={() => editTime(iv.id, 'ended_at', iv.ended_at)}
+                  <button
+                    class="link"
+                    aria-label={`Edit end time for ${POSTURE_LABEL[iv.posture]} interval`}
+                    onclick={(event) =>
+                      openTimeEditor(iv, 'ended_at', event.currentTarget as HTMLButtonElement)}
                     >{fmtTime(iv.ended_at)}</button
                   >
                 {:else}
@@ -255,6 +315,51 @@
     </div>
   {/if}
 </div>
+
+<dialog
+  class="time-dialog"
+  bind:this={timeDialog}
+  aria-labelledby="time-dialog-title"
+  aria-describedby="time-dialog-description"
+  onclose={handleTimeDialogClose}
+>
+  {#if editingInterval}
+    <form onsubmit={saveTime}>
+      <h2 id="time-dialog-title">Edit interval times</h2>
+      <p id="time-dialog-description" class="muted small">
+        Review the start and {editingInterval.ended_at ? 'end' : 'running'} time. The {editingField ===
+        'started_at'
+          ? 'start'
+          : 'end'} time is selected.
+      </p>
+      <div class="field">
+        <label for="interval-start">Start date and time</label>
+        <input
+          id="interval-start"
+          type="datetime-local"
+          step="60"
+          bind:value={editStart}
+          required
+        />
+      </div>
+      {#if editingInterval.ended_at}
+        <div class="field">
+          <label for="interval-end">End date and time</label>
+          <input id="interval-end" type="datetime-local" step="60" bind:value={editEnd} required />
+        </div>
+      {:else}
+        <p class="muted small">This interval is still running, so it has no end time.</p>
+      {/if}
+      {#if timeEditErr}<p class="error small" role="alert">{timeEditErr}</p>{/if}
+      <div class="dialog-actions">
+        <button type="button" onclick={closeTimeEditor} disabled={savingTime}>Cancel</button>
+        <button class="btn-primary" type="submit" disabled={savingTime}
+          >{savingTime ? 'Saving…' : 'Save'}</button
+        >
+      </div>
+    </form>
+  {/if}
+</dialog>
 
 {#if tingle.intervals.length > 0}
   <div class="card">
@@ -422,6 +527,33 @@
   }
   .error {
     color: var(--bad);
+  }
+  .time-dialog {
+    width: min(30rem, calc(100% - 2rem));
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    padding: 1.25rem;
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow);
+  }
+  .time-dialog::backdrop {
+    background: rgb(0 0 0 / 0.6);
+  }
+  .time-dialog h2 {
+    margin: 0 0 0.5rem;
+  }
+  .time-dialog input[type='datetime-local'] {
+    min-width: 0;
+  }
+  .time-dialog form > p:first-of-type {
+    margin-top: 0;
+  }
+  .dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    margin-top: 1rem;
   }
 
   @media (max-width: 640px) {

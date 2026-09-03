@@ -1,0 +1,46 @@
+type: '@swamp/software-factory'
+typeVersion: 2026.06.24.1
+id: 89c7a063-0a4c-4886-95f3-57d291e90150
+name: minimal-factory
+version: 1
+tags: {}
+globalArguments:
+  stages:
+    - id: work
+      initial: true
+      description: Review GitHub issue #33, implement the requested enhancement, and validate the changed behavior.
+      work:
+        mode: interactive
+        systemPrompt: |
+          Inspect issue https://github.com/jimmykeech/nervetrack/issues/33 and the relevant repository code.
+          Implement the smallest coherent change that satisfies the acceptance criteria.
+          Preserve unrelated work. Add or update one focused regression test when practical.
+          Run focused validation and record the review, changes, and validation result.
+      artifacts:
+        - name: implementation-summary
+          schema:
+            type: object
+            required: [issue, review, changes, validation]
+            properties:
+              issue: { type: string, minLength: 1 }
+              review: { type: string, minLength: 1 }
+              changes:
+                type: array
+                minItems: 1
+                items: { type: string, minLength: 1 }
+              validation:
+                type: array
+                minItems: 1
+                items: { type: string, minLength: 1 }
+      transitions:
+        - name: finish
+          to: done
+          gates:
+            - type: artifact-exists
+              config: { artifact: implementation-summary }
+    - id: done
+      terminal: true
+reports:
+  require:
+    - { name: '@swamp/software-factory/work-item-summary', methods: [summary] }
+methods: {}
