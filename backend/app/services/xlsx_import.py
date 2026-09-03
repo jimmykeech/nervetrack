@@ -8,7 +8,9 @@ duplicating.
 
 from __future__ import annotations
 
+import io
 import re
+import zipfile
 from datetime import date, datetime, time, timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -20,8 +22,72 @@ from app.db import Database
 from app.services import sessions as sessions_service
 from app.services.timeutil import now_utc
 
+# Security limits for the uploaded ZIP container and parsed worksheets.
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 1_000
+MAX_UNCOMPRESSED_BYTES = 100 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 100
+MAX_WORKSHEET_ROWS = 100_000
+MAX_WORKSHEET_COLUMNS = 256
+MAX_WORKSHEET_CELLS = 1_000_000
+_ARCHIVE_READ_CHUNK = 1024 * 1024
+
 # Exercises whose "Reps" cell actually records a hold time in seconds.
 _TIME_BASED = {"forearm plank", "hollowbody hold", "side plank", "hollow body hold"}
+
+
+def _validate_archive(content: bytes) -> None:
+    """Validate and stream-decompress the XLSX ZIP before openpyxl parses it."""
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise ValueError("workbook exceeds the upload size limit")
+
+    try:
+        with zipfile.ZipFile(io.BytesIO(content)) as archive:
+            members = archive.infolist()
+            if len(members) > MAX_ARCHIVE_MEMBERS:
+                raise ValueError("workbook archive contains too many members")
+
+            declared_total = 0
+            for member in members:
+                if member.flag_bits & 0x1:
+                    raise ValueError("encrypted workbook archives are not supported")
+                declared_total += member.file_size
+                if declared_total > MAX_UNCOMPRESSED_BYTES:
+                    raise ValueError("workbook archive expands beyond the size limit")
+                if member.file_size > MAX_UNCOMPRESSED_BYTES:
+                    raise ValueError("workbook archive member exceeds the size limit")
+                if member.file_size and member.compress_size == 0:
+                    raise ValueError("workbook archive has an invalid compression ratio")
+                if (
+                    member.compress_size
+                    and member.file_size / member.compress_size > MAX_COMPRESSION_RATIO
+                ):
+                    raise ValueError("workbook archive compression ratio is too high")
+
+            # Do not rely only on attacker-controlled central-directory sizes.
+            actual_total = 0
+            for member in members:
+                if member.is_dir():
+                    continue
+                with archive.open(member) as source:
+                    while chunk := source.read(_ARCHIVE_READ_CHUNK):
+                        actual_total += len(chunk)
+                        if actual_total > MAX_UNCOMPRESSED_BYTES:
+                            raise ValueError("workbook archive expands beyond the size limit")
+    except (zipfile.BadZipFile, NotImplementedError, RuntimeError) as exc:
+        raise ValueError("invalid or unsupported workbook archive") from exc
+
+
+def _validate_worksheet_dimensions(wb) -> None:
+    for ws in wb.worksheets:
+        rows = ws.max_row or 0
+        columns = ws.max_column or 0
+        if rows > MAX_WORKSHEET_ROWS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the row limit")
+        if columns > MAX_WORKSHEET_COLUMNS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the column limit")
+        if rows * columns > MAX_WORKSHEET_CELLS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the cell limit")
 
 
 # --- value coercion helpers ------------------------------------------------
@@ -128,6 +194,22 @@ def _get(row: tuple, headers: dict[str, int], *needles: str) -> Any:
     return None
 
 
+def _iter_rows_bounded(ws, *, min_row: int):
+    """Enforce iteration limits even when worksheet dimension metadata is false."""
+    cells = 0
+    for row_number, row in enumerate(
+        ws.iter_rows(min_row=min_row, values_only=True), start=min_row
+    ):
+        if row_number > MAX_WORKSHEET_ROWS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the row limit")
+        if len(row) > MAX_WORKSHEET_COLUMNS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the column limit")
+        cells += len(row)
+        if cells > MAX_WORKSHEET_CELLS:
+            raise ValueError(f"worksheet {ws.title!r} exceeds the cell limit")
+        yield row
+
+
 # --- importers -------------------------------------------------------------
 
 
@@ -136,7 +218,7 @@ def _import_daily(db: Database, user_id: UUID, ws) -> int:
     if not headers:
         return 0
     count = 0
-    for row in ws.iter_rows(min_row=4, values_only=True):
+    for row in _iter_rows_bounded(ws, min_row=4):
         d = parse_excel_date(_get(row, headers, "date"))
         if d is None:
             continue
@@ -229,7 +311,7 @@ def _import_weekly(db: Database, user_id: UUID, ws) -> int:
     if not headers:
         return 0
     count = 0
-    for row in ws.iter_rows(min_row=header_row + 1, values_only=True):
+    for row in _iter_rows_bounded(ws, min_row=header_row + 1):
         wk = _parse_range_start(_get(row, headers, "date range", "range"))
         if wk is None:
             continue
@@ -277,7 +359,7 @@ def _import_exercise_log(db: Database, user_id: UUID, ws) -> int:
     # Group rows into sessions by forward-filled date.
     sessions: dict[date, list[dict]] = {}
     current_date: date | None = None
-    for row in ws.iter_rows(min_row=4, values_only=True):
+    for row in _iter_rows_bounded(ws, min_row=4):
         raw_date = _get(row, headers, "date")
         if not _is_blank(raw_date):
             parsed = parse_excel_date(raw_date)
@@ -373,21 +455,24 @@ def _import_exercise_log(db: Database, user_id: UUID, ws) -> int:
 
 
 def import_workbook(db: Database, user_id: UUID, content: bytes) -> dict[str, int]:
-    import io
+    _validate_archive(content)
+    wb = load_workbook(io.BytesIO(content), data_only=True, read_only=True)
+    try:
+        _validate_worksheet_dimensions(wb)
+        result = {"daily_entries": 0, "weekly_summaries": 0, "sessions": 0}
 
-    wb = load_workbook(io.BytesIO(content), data_only=True)
-    result = {"daily_entries": 0, "weekly_summaries": 0, "sessions": 0}
+        daily_ws = _find_sheet(wb, "daily")
+        if daily_ws is not None:
+            result["daily_entries"] = _import_daily(db, user_id, daily_ws)
 
-    daily_ws = _find_sheet(wb, "daily")
-    if daily_ws is not None:
-        result["daily_entries"] = _import_daily(db, user_id, daily_ws)
+        log_ws = _find_sheet(wb, "exercise log", "exercise")
+        if log_ws is not None and log_ws is not daily_ws:
+            result["sessions"] = _import_exercise_log(db, user_id, log_ws)
 
-    log_ws = _find_sheet(wb, "exercise log", "exercise")
-    if log_ws is not None and log_ws is not daily_ws:
-        result["sessions"] = _import_exercise_log(db, user_id, log_ws)
+        weekly_ws = _find_sheet(wb, "weekly")
+        if weekly_ws is not None:
+            result["weekly_summaries"] = _import_weekly(db, user_id, weekly_ws)
 
-    weekly_ws = _find_sheet(wb, "weekly")
-    if weekly_ws is not None:
-        result["weekly_summaries"] = _import_weekly(db, user_id, weekly_ws)
-
-    return result
+        return result
+    finally:
+        wb.close()
