@@ -3,8 +3,10 @@
   import { page } from '$app/stores';
   import { api } from '$lib/api';
   import LineChart from '$lib/components/LineChart.svelte';
+  import WorkoutEditor from '$lib/components/WorkoutEditor.svelte';
   import { todayISO, utcNaiveToLocalInput } from '$lib/time';
-  import type { Exercise, ExerciseLog, SessionDetail } from '$lib/types';
+  import type { Exercise, ExerciseLog, SessionDetail, Workout, WorkoutIn } from '$lib/types';
+  import { workoutExercises, workoutLogs } from '$lib/workouts';
   import { activePainInstances } from '$lib/stores/painInstances.svelte';
 
   let exercises = $state<Exercise[]>([]);
@@ -13,13 +15,57 @@
   let sessionNotes = $state('');
   let rows = $state<Record<string, ExerciseLog>>({});
   let added = $state<string[]>([]);
-  let lastLogs = $state<Record<string, Partial<ExerciseLog>>>({});
   let toAdd = $state('');
   let saved = $state<SessionDetail | null>(null);
   let message = $state('');
   let sessionInstanceIds = $state<string[]>([]);
   let loggedSessions = $state<SessionDetail[]>([]);
   let editingId = $state<string | null>(null);
+  let workouts = $state<Workout[]>([]);
+  let selectedWorkoutId = $state('');
+  let sourceWorkoutName = $state('');
+  let workoutDraft = $state<{ id: string | null; data: WorkoutIn; populate: boolean } | null>(null);
+  let busy = $state(false);
+  let error = $state('');
+  const selectedWorkout = $derived(workouts.find((w) => w.id === selectedWorkoutId));
+
+  function createWorkout(logs: ExerciseLog[] = [], populate = true) {
+    workoutDraft = { id: null, data: { name: '', exercises: workoutExercises(logs) }, populate };
+  }
+
+  function populateWorkout(workout: Workout) {
+    cancelEdit();
+    const logs = workoutLogs(workout.exercises);
+    added = logs.map((log) => log.exercise_id);
+    rows = Object.fromEntries(logs.map((log) => [log.exercise_id, log]));
+    selectedWorkoutId = workout.id;
+    sourceWorkoutName = workout.name;
+  }
+
+  function workoutSaved(workout: Workout) {
+    const populate = workoutDraft?.populate;
+    workouts = [...workouts.filter((w) => w.id !== workout.id), workout].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
+    workoutDraft = null;
+    if (populate) populateWorkout(workout);
+    message = `Saved workout “${workout.name}”. Your session is ready to review and save.`;
+  }
+
+  async function removeWorkout(workout: Workout) {
+    if (!confirm(`Delete saved workout “${workout.name}”? Logged sessions will be kept.`)) return;
+    busy = true;
+    error = '';
+    try {
+      await api.deleteWorkout(workout.id);
+      workouts = workouts.filter((w) => w.id !== workout.id);
+      selectedWorkoutId = '';
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not delete workout.';
+    } finally {
+      busy = false;
+    }
+  }
 
   function toggleSessionInstance(id: string) {
     sessionInstanceIds = sessionInstanceIds.includes(id)
@@ -47,21 +93,22 @@
   }
 
   async function load() {
-    exercises = (await api.listExercises()).filter((e) => e.active);
-    lastLogs = await api.lastLogs();
-    // Fresh slate every time: no prefilled exercises, intensity, notes, or tags.
-    rows = {};
-    added = [];
-    toAdd = '';
-    intensity = null;
-    sessionNotes = '';
-    sessionInstanceIds = [];
+    try {
+      [exercises, workouts] = await Promise.all([api.listExercises(), api.listWorkouts()]);
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not load workouts.';
+    }
   }
 
   onMount(load);
 
   async function loadSessions(d: string = date) {
-    loggedSessions = await api.sessionsForDate(d);
+    try {
+      const sessions = await api.sessionsForDate(d);
+      if (d === date) loggedSessions = sessions;
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not load sessions.';
+    }
   }
 
   $effect(() => {
@@ -80,14 +127,9 @@
       .join(', ');
   }
 
-  function isTimeBased(name: string): boolean {
-    const n = name.toLowerCase();
-    return n.includes('plank') || n.includes('hold');
-  }
-
   function addExerciseToSession(id: string) {
     if (!id || added.includes(id)) return;
-    rows[id] = { ...blankRow(id), ...(lastLogs[id] ?? {}) };
+    rows[id] = blankRow(id);
     added = [...added, id];
     toAdd = '';
   }
@@ -98,12 +140,14 @@
   }
 
   function exerciseName(id: string): string {
-    return exercises.find((e) => e.id === id)?.name ?? '';
+    return exercises.find((e) => e.id === id)?.name ?? rows[id]?.exercise_name ?? '';
   }
 
-  const availableToAdd = $derived(exercises.filter((e) => !added.includes(e.id)));
+  const availableToAdd = $derived(exercises.filter((e) => e.active && !added.includes(e.id)));
 
   function editSession(s: SessionDetail) {
+    workoutDraft = null;
+    sourceWorkoutName = '';
     editingId = s.id;
     added = s.logs.map((l) => l.exercise_id);
     rows = Object.fromEntries(
@@ -135,6 +179,9 @@
     sessionNotes = '';
     sessionInstanceIds = [];
     message = '';
+    error = '';
+    toAdd = '';
+    sourceWorkoutName = '';
   }
 
   async function removeSession(s: SessionDetail) {
@@ -145,27 +192,38 @@
   }
 
   async function saveSession() {
-    const logs = added.map((id) => rows[id]);
-    const payload = {
-      intensity,
-      notes: sessionNotes || null,
-      logs,
-      instance_ids: sessionInstanceIds
-    };
-    if (editingId) {
-      saved = await api.updateSession(editingId, payload);
-      message = `Updated session with ${saved.logs.length} exercises.`;
-    } else {
-      saved = await api.createSession(date, payload);
-      message = `Saved session with ${saved.logs.length} exercises.`;
+    if (busy || (!added.length && !editingId)) return;
+    busy = true;
+    error = '';
+    try {
+      const logs = added.map((id) => rows[id]);
+      const payload = {
+        intensity,
+        notes: sessionNotes || null,
+        logs,
+        instance_ids: sessionInstanceIds
+      };
+      if (editingId) {
+        saved = await api.updateSession(editingId, payload);
+        message = `Updated session with ${saved.logs.length} exercises.`;
+      } else {
+        saved = await api.createSession(date, payload);
+        message = `Saved session with ${saved.logs.length} exercises.`;
+      }
+      editingId = null;
+      rows = {};
+      added = [];
+      intensity = null;
+      sessionNotes = '';
+      sessionInstanceIds = [];
+      sourceWorkoutName = '';
+      toAdd = '';
+      await loadSessions();
+    } catch (e) {
+      error = e instanceof Error ? e.message : 'Could not save session.';
+    } finally {
+      busy = false;
     }
-    editingId = null;
-    rows = {};
-    added = [];
-    intensity = null;
-    sessionNotes = '';
-    sessionInstanceIds = [];
-    await loadSessions();
   }
 
   async function addExercise() {
@@ -215,7 +273,7 @@
   <div class="row session-meta">
     <div class="field">
       <label>Session date</label>
-      <input type="date" bind:value={date} />
+      <input type="date" bind:value={date} onchange={cancelEdit} disabled={busy} />
     </div>
   </div>
 </div>
@@ -231,8 +289,19 @@
               · intensity {s.intensity}{/if}</span
           >
           <span class="logged-actions">
-            <button class="link" onclick={() => editSession(s)}>Edit</button>
-            <button class="link danger" onclick={() => removeSession(s)}>Delete</button>
+            <button
+              class="link"
+              onclick={() => createWorkout(s.logs)}
+              disabled={busy || !!workoutDraft}>Save as workout</button
+            >
+            <button class="link" onclick={() => editSession(s)} disabled={busy || !!workoutDraft}
+              >Edit</button
+            >
+            <button
+              class="link danger"
+              onclick={() => removeSession(s)}
+              disabled={busy || !!workoutDraft}>Delete</button
+            >
           </span>
         </div>
         {#if sessionExercises(s)}<div class="muted small">{sessionExercises(s)}</div>{/if}
@@ -242,111 +311,188 @@
   </div>
 {/if}
 
-<div class="card" class:editing={editingId}>
-  <h3 style="margin-top: 0">
-    {editingId ? 'Edit session' : 'Log session'}
-    {#if editingId}<button class="link" onclick={cancelEdit} style="margin-left: 0.5rem"
-        >Cancel edit</button
-      >{/if}
-  </h3>
+<div class="card">
+  <h3 style="margin-top: 0">Saved workouts</h3>
   <p class="muted small">
-    Add each exercise as you do it — inputs prefill from the last time you logged it.
+    Choose a workout to fill a new session, or create and save a workout first.
   </p>
-  {#if availableToAdd.length}
-    <div class="row picker">
-      <select bind:value={toAdd} style="flex: 1">
-        <option value="">Choose an exercise…</option>
-        {#each availableToAdd as e}<option value={e.id}>{e.name}</option>{/each}
-      </select>
-      <button onclick={() => addExerciseToSession(toAdd)} disabled={!toAdd}>+ Add</button>
-    </div>
-  {:else}
-    <p class="muted small">All exercises added.</p>
-  {/if}
-  <div class="rows">
-    {#each added as id (id)}
-      {@const name = exerciseName(id)}
-      <div class="exrow on">
-        <div class="exhead">
-          <span class="exname">{name}</span>
-          <button class="link" onclick={() => removeFromSession(id)}>✕ remove</button>
-        </div>
-        <div class="inputs">
-          <span><label>Sets</label><input type="number" bind:value={rows[id].sets} /></span>
-          {#if isTimeBased(name)}
-            <span
-              ><label>Hold (s)</label><input
-                type="number"
-                bind:value={rows[id].hold_seconds}
-              /></span
+  <fieldset disabled={busy || !!workoutDraft}>
+    {#if workouts.length}
+      <div class="row picker">
+        <select aria-label="Saved workout" bind:value={selectedWorkoutId} style="flex: 1">
+          <option value="">Choose a workout…</option>
+          {#each workouts as workout (workout.id)}
+            <option value={workout.id}>{workout.name} ({workout.exercises.length} exercises)</option
             >
-          {:else}
-            <span><label>Reps</label><input type="number" bind:value={rows[id].reps} /></span>
-          {/if}
-          <span
-            ><label>Weight (kg)</label><input
-              type="number"
-              step="0.5"
-              bind:value={rows[id].weight_kg}
-            /></span
-          >
-          <span
-            ><label>Difficulty</label><input
-              type="number"
-              min="1"
-              max="10"
-              step="0.5"
-              bind:value={rows[id].difficulty}
-            /></span
-          >
-          <span class="wide"
-            ><label>Nerve response</label><input
-              bind:value={rows[id].nerve_response}
-              placeholder="e.g. slight twinge 2nd set"
-            /></span
-          >
-          <span class="wide"
-            ><label>Modification</label><input
-              bind:value={rows[id].modification}
-              placeholder="e.g. heel elevation"
-            /></span
-          >
-        </div>
+          {/each}
+        </select>
+        <button
+          onclick={() => selectedWorkout && populateWorkout(selectedWorkout)}
+          disabled={!selectedWorkout}>Use saved workout</button
+        >
       </div>
-    {/each}
-  </div>
-  <div class="row" style="margin-top: 0.75rem">
-    <div class="field f-intensity">
-      <label>Intensity (1–10)</label>
-      <input type="number" min="1" max="10" step="0.5" bind:value={intensity} />
+      {#if selectedWorkout}
+        <p class="muted small">
+          {selectedWorkout.exercises.map((e) => e.exercise_name).join(', ')}
+        </p>
+      {/if}
+    {:else}
+      <p class="muted small">No saved workouts yet.</p>
+    {/if}
+    <div class="row">
+      <button onclick={() => createWorkout()}>Create workout</button>
+      {#if selectedWorkout}
+        <button
+          class="link"
+          onclick={() => {
+            if (selectedWorkout)
+              workoutDraft = { id: selectedWorkout.id, data: selectedWorkout, populate: true };
+          }}>Edit workout</button
+        >
+        <button
+          class="link danger"
+          onclick={() => selectedWorkout && removeWorkout(selectedWorkout)}>Delete workout</button
+        >
+      {/if}
     </div>
-    <div class="field" style="flex: 1">
-      <label>Session notes</label>
-      <input bind:value={sessionNotes} />
-    </div>
-  </div>
-  {#if activePainInstances().length}
-    <div class="field" style="margin-top: 0.75rem">
-      <label>Tag pain instance(s) (optional)</label>
-      <div class="chips">
-        {#each activePainInstances() as pi (pi.id)}
-          <button
-            type="button"
-            class="chip"
-            class:on={sessionInstanceIds.includes(pi.id)}
-            onclick={() => toggleSessionInstance(pi.id)}
-          >
-            {pi.name}
-          </button>
+  </fieldset>
+</div>
+
+{#if workoutDraft}
+  {#key workoutDraft}
+    <WorkoutEditor
+      {exercises}
+      initial={workoutDraft.data}
+      workoutId={workoutDraft.id}
+      useAfterSave={workoutDraft.populate}
+      onSave={workoutSaved}
+      onCancel={() => (workoutDraft = null)}
+    />
+  {/key}
+{/if}
+
+{#if error}<p role="alert">{error}</p>{/if}
+{#if message}<p class="saved" role="status">{message}</p>{/if}
+
+{#if added.length || editingId || sourceWorkoutName}
+  <div class="card" class:editing={editingId}>
+    <fieldset disabled={busy || !!workoutDraft}>
+      <h3 style="margin-top: 0">
+        {editingId ? 'Edit session' : 'Log session'}
+        {#if editingId}<button class="link" onclick={cancelEdit} style="margin-left: 0.5rem"
+            >Cancel edit</button
+          >{/if}
+      </h3>
+      <p class="muted small">
+        {sourceWorkoutName ? `Workout: ${sourceWorkoutName}. ` : ''}Review the exercises and record
+        this session’s results.
+      </p>
+      <details>
+        <summary>Customize this session</summary>
+        {#if availableToAdd.length}
+          <div class="row picker">
+            <select bind:value={toAdd} style="flex: 1">
+              <option value="">Choose an exercise…</option>
+              {#each availableToAdd as e}<option value={e.id}>{e.name}</option>{/each}
+            </select>
+            <button onclick={() => addExerciseToSession(toAdd)} disabled={!toAdd}>+ Add</button>
+          </div>
+        {:else}
+          <p class="muted small">All exercises added.</p>
+        {/if}
+      </details>
+      <div class="rows">
+        {#each added as id (id)}
+          {@const name = exerciseName(id)}
+          <div class="exrow on">
+            <div class="exhead">
+              <span class="exname">{name}</span>
+              <button class="link" onclick={() => removeFromSession(id)}>✕ remove</button>
+            </div>
+            <div class="inputs">
+              <span><label>Sets</label><input type="number" bind:value={rows[id].sets} /></span>
+              <span
+                ><label>Hold (s)</label><input
+                  type="number"
+                  bind:value={rows[id].hold_seconds}
+                /></span
+              >
+              <span><label>Reps</label><input type="number" bind:value={rows[id].reps} /></span>
+              <span
+                ><label>Weight (kg)</label><input
+                  type="number"
+                  step="0.5"
+                  bind:value={rows[id].weight_kg}
+                /></span
+              >
+              <span
+                ><label>Difficulty</label><input
+                  type="number"
+                  min="1"
+                  max="10"
+                  step="0.5"
+                  bind:value={rows[id].difficulty}
+                /></span
+              >
+              <span class="wide"
+                ><label>Nerve response</label><input
+                  bind:value={rows[id].nerve_response}
+                  placeholder="e.g. slight twinge 2nd set"
+                /></span
+              >
+              <span class="wide"
+                ><label>Modification</label><input
+                  bind:value={rows[id].modification}
+                  placeholder="e.g. heel elevation"
+                /></span
+              >
+            </div>
+          </div>
         {/each}
       </div>
-    </div>
-  {/if}
-  <button class="status-G" onclick={saveSession}
-    >{editingId ? 'Update session' : 'Save session'}</button
-  >
-  {#if message}<span class="saved" style="margin-left: 0.75rem">{message}</span>{/if}
-</div>
+      <div class="row" style="margin-top: 0.75rem">
+        <div class="field f-intensity">
+          <label>Intensity (1–10)</label>
+          <input type="number" min="1" max="10" step="0.5" bind:value={intensity} />
+        </div>
+        <div class="field" style="flex: 1">
+          <label>Session notes</label>
+          <input bind:value={sessionNotes} />
+        </div>
+      </div>
+      {#if activePainInstances().length}
+        <div class="field" style="margin-top: 0.75rem">
+          <label>Tag pain instance(s) (optional)</label>
+          <div class="chips">
+            {#each activePainInstances() as pi (pi.id)}
+              <button
+                type="button"
+                class="chip"
+                class:on={sessionInstanceIds.includes(pi.id)}
+                onclick={() => toggleSessionInstance(pi.id)}
+              >
+                {pi.name}
+              </button>
+            {/each}
+          </div>
+        </div>
+      {/if}
+      <div class="row">
+        <button class="status-G" onclick={saveSession} disabled={!added.length && !editingId}
+          >{busy ? 'Saving…' : editingId ? 'Update session' : 'Save session'}</button
+        >
+        <button
+          onclick={() =>
+            createWorkout(
+              added.map((id) => rows[id]),
+              false
+            )}
+          disabled={!added.length}>Save as new workout</button
+        >
+      </div>
+    </fieldset>
+  </div>
+{/if}
 
 <div class="card">
   <h3 style="margin-top: 0">Catalogue</h3>
@@ -355,7 +501,7 @@
     <button onclick={addExercise}>Add</button>
   </div>
   <ul class="cat">
-    {#each exercises as e}
+    {#each exercises.filter((e) => e.active) as e}
       <li>{e.name}<button class="link" onclick={() => deactivate(e)}>retire</button></li>
     {/each}
   </ul>
@@ -377,6 +523,15 @@
 </div>
 
 <style>
+  fieldset {
+    border: 0;
+    padding: 0;
+    margin: 0;
+    min-width: 0;
+  }
+  details {
+    margin-bottom: 0.75rem;
+  }
   .exrow {
     border: 1px solid var(--border);
     border-radius: 10px;
@@ -461,6 +616,8 @@
   }
   .logged-head {
     display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
     align-items: center;
     justify-content: space-between;
   }
@@ -470,6 +627,7 @@
   }
   .logged-actions {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
   }
   .logged-notes {

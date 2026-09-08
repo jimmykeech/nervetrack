@@ -23,6 +23,7 @@ from app.routers import (
     timer,
     tingling,
     weekly,
+    workouts,
 )
 from app.services.backfill_overnight import backfill_overnight
 from app.services.llm import litellm_http_clients
@@ -66,6 +67,7 @@ def create_app() -> FastAPI:
         timer,
         tingling,
         weekly,
+        workouts,
         stats,
         imports,
         ai,
