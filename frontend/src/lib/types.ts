@@ -59,6 +59,20 @@ export interface SessionDetail {
   instance_ids: string[];
 }
 
+export type WorkoutExercise = Pick<
+  ExerciseLog,
+  'exercise_id' | 'exercise_name' | 'sets' | 'reps' | 'hold_seconds' | 'weight_kg' | 'modification'
+>;
+
+export interface WorkoutIn {
+  name: string;
+  exercises: WorkoutExercise[];
+}
+
+export interface Workout extends WorkoutIn {
+  id: string;
+}
+
 export interface DailyEntry {
   id: string;
   entry_date: string;

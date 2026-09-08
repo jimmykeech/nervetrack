@@ -24,7 +24,9 @@ import type {
   SessionDetail,
   TinglingInterval,
   WeeklyDraft,
-  WeeklySummary
+  WeeklySummary,
+  Workout,
+  WorkoutIn
 } from './types';
 
 const BASE = '/api/v1';
@@ -133,6 +135,14 @@ export const api = {
   progression: (exerciseId: string) =>
     request<Record<string, unknown>[]>(`/exercises/${exerciseId}/progression`),
   lastLogs: () => request<Record<string, Partial<ExerciseLog>>>('/exercises/last-logs'),
+
+  // Saved workouts
+  listWorkouts: () => request<Workout[]>('/workouts'),
+  createWorkout: (data: WorkoutIn) =>
+    request<Workout>('/workouts', { method: 'POST', body: JSON.stringify(data) }),
+  updateWorkout: (id: string, data: WorkoutIn) =>
+    request<Workout>(`/workouts/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteWorkout: (id: string) => request<void>(`/workouts/${id}`, { method: 'DELETE' }),
 
   // Pain instances
   listPainInstances: () => request<PainInstance[]>('/pain-instances'),
