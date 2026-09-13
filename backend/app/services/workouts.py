@@ -45,8 +45,8 @@ def _insert_exercises(db: Database, workout_id: UUID, exercises: list[WorkoutExe
             """
             INSERT INTO workout_exercises
                 (workout_id, exercise_id, sort_order, sets, reps, hold_seconds,
-                 weight_kg, modification)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                 weight_kg, modification, superset_group)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 workout_id,
@@ -57,6 +57,7 @@ def _insert_exercises(db: Database, workout_id: UUID, exercises: list[WorkoutExe
                 exercise.hold_seconds,
                 exercise.weight_kg,
                 exercise.modification,
+                exercise.superset_group,
             ],
         )
 

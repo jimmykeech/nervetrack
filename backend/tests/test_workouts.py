@@ -107,6 +107,28 @@ def test_workouts_are_user_scoped_and_validate_exercises(auth_client, db, make_u
     assert service.list_workouts(db, other) == [foreign_workout]
 
 
+def test_workout_preserves_multiple_supersets(auth_client):
+    exercises = auth_client.get("/api/v1/exercises").json()[:5]
+    payload = {
+        "name": "Two supersets",
+        "exercises": [
+            {"exercise_id": exercise["id"], "superset_group": group}
+            for exercise, group in zip(exercises, [1, 1, 2, 2, None], strict=True)
+        ],
+    }
+    created = auth_client.post("/api/v1/workouts", json=payload)
+    assert created.status_code == 201
+    assert [item["superset_group"] for item in created.json()["exercises"]] == [1, 1, 2, 2, None]
+
+    invalid = {
+        "name": "Incomplete superset",
+        "exercises": [{"exercise_id": exercises[0]["id"], "superset_group": 1}],
+    }
+    rejected = auth_client.post("/api/v1/workouts", json=invalid)
+    assert rejected.status_code == 422
+    assert "at least two exercises" in rejected.text
+
+
 def test_workout_can_reuse_owned_inactive_exercise(auth_client):
     exercise_id = auth_client.get("/api/v1/exercises").json()[0]["id"]
     assert auth_client.patch(

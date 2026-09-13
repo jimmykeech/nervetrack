@@ -2,7 +2,12 @@
   import { untrack } from 'svelte';
   import { api } from '$lib/api';
   import type { Exercise, Workout, WorkoutIn } from '$lib/types';
-  import { workoutExercises } from '$lib/workouts';
+  import {
+    invalidSupersetGroups,
+    nextSupersetGroup,
+    supersetGroups,
+    workoutExercises
+  } from '$lib/workouts';
 
   let {
     exercises,
@@ -31,6 +36,7 @@
       (exercise) => exercise.active && !rows.some((row) => row.exercise_id === exercise.id)
     )
   );
+  const invalidGroups = $derived(invalidSupersetGroups(rows));
 
   function addExercise() {
     const exercise = available.find((item) => item.id === toAdd);
@@ -44,7 +50,8 @@
         reps: null,
         hold_seconds: null,
         weight_kg: null,
-        modification: null
+        modification: null,
+        superset_group: null
       }
     ];
     toAdd = '';
@@ -52,7 +59,7 @@
 
   async function save(event: SubmitEvent) {
     event.preventDefault();
-    if (busy || !name.trim() || !rows.length) return;
+    if (busy || !name.trim() || !rows.length || invalidGroups.length) return;
     busy = true;
     error = '';
     try {
@@ -114,14 +121,33 @@
               /></label
             >
             <label class="wide">Modification<input bind:value={row.modification} /></label>
+            <label class="wide"
+              >Superset
+              <select bind:value={row.superset_group}>
+                <option value={null}>Not in a superset</option>
+                {#each supersetGroups(rows) as group}
+                  <option value={group}>Superset {group}</option>
+                {/each}
+                <option value={nextSupersetGroup(rows)}>New superset</option>
+              </select></label
+            >
           </div>
         </div>
       {:else}
         <p class="muted small">Add at least one exercise to this workout.</p>
       {/each}
+      {#if invalidGroups.length}
+        <p class="superset-warning" role="alert">
+          Add another exercise to {invalidGroups.map((group) => `Superset ${group}`).join(', ')}.
+        </p>
+      {/if}
       {#if error}<p role="alert">{error}</p>{/if}
       <div class="row">
-        <button class="status-G" type="submit" disabled={!name.trim() || !rows.length}>
+        <button
+          class="status-G"
+          type="submit"
+          disabled={!name.trim() || !rows.length || !!invalidGroups.length}
+        >
           {busy ? 'Saving…' : useAfterSave ? 'Save workout & use' : 'Save workout'}
         </button>
         <button type="button" onclick={onCancel}>Cancel</button>
@@ -168,7 +194,11 @@
   .inputs .wide {
     flex-basis: 12rem;
   }
-  input {
+  input,
+  .inputs select {
     width: 100%;
+  }
+  .superset-warning {
+    color: var(--danger, #c0392b);
   }
 </style>

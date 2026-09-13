@@ -13,6 +13,32 @@ from app.services import pain_instances as pain_instances_service
 from app.services import sessions as service
 
 
+def test_session_preserves_multiple_supersets_and_exercise_order(auth_client):
+    exercises = auth_client.get("/api/v1/exercises").json()[:5]
+    ordered = [exercises[3], exercises[0], exercises[4], exercises[1], exercises[2]]
+    response = auth_client.post(
+        "/api/v1/entries/2026-06-13/session",
+        json={
+            "logs": [
+                {"exercise_id": exercise["id"], "superset_group": group}
+                for exercise, group in zip(ordered, [1, 1, 2, 2, None], strict=True)
+            ]
+        },
+    )
+    assert response.status_code == 201
+    assert [log["exercise_id"] for log in response.json()["logs"]] == [
+        exercise["id"] for exercise in ordered
+    ]
+    assert [log["superset_group"] for log in response.json()["logs"]] == [1, 1, 2, 2, None]
+
+    rejected = auth_client.post(
+        "/api/v1/entries/2026-06-14/session",
+        json={"logs": [{"exercise_id": exercises[0]["id"], "superset_group": 1}]},
+    )
+    assert rejected.status_code == 422
+    assert "at least two exercises" in rejected.text
+
+
 def test_create_session_without_tags(db, user_id):
     entry_id = entries_service.ensure_entry(db, user_id, date(2026, 6, 13))
     created = service.create_session(db, user_id, entry_id, SessionIn(intensity=5))
