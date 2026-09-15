@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Annotated
 from uuid import UUID
 
-from pydantic import BaseModel, Field, StringConstraints, field_validator
+from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
 
 class WorkoutExercise(BaseModel):
@@ -17,6 +17,7 @@ class WorkoutExercise(BaseModel):
     hold_seconds: int | None = Field(default=None, ge=0)
     weight_kg: Decimal | None = Field(default=None, ge=0)
     modification: str | None = None
+    superset_group: int | None = Field(default=None, ge=1)
 
 
 class WorkoutIn(BaseModel):
@@ -29,6 +30,16 @@ class WorkoutIn(BaseModel):
         if len({exercise.exercise_id for exercise in exercises}) != len(exercises):
             raise ValueError("Each exercise can only appear once in a workout")
         return exercises
+
+    @model_validator(mode="after")
+    def supersets_have_multiple_exercises(self) -> WorkoutIn:
+        counts: dict[int, int] = {}
+        for exercise in self.exercises:
+            if exercise.superset_group is not None:
+                counts[exercise.superset_group] = counts.get(exercise.superset_group, 0) + 1
+        if any(count < 2 for count in counts.values()):
+            raise ValueError("Each superset must contain at least two exercises")
+        return self
 
 
 class Workout(WorkoutIn):

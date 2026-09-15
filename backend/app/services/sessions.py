@@ -44,7 +44,7 @@ def _load_logs(db: Database, session_id: UUID) -> list[ExerciseLog]:
         FROM exercise_logs el
         JOIN exercises e ON e.id = el.exercise_id
         WHERE el.session_id = ?
-        ORDER BY e.sort_order
+        ORDER BY COALESCE(el.sort_order, e.sort_order), e.sort_order
         """,
         [session_id],
     )
@@ -128,13 +128,13 @@ def _validate_exercises(db: Database, user_id: UUID, logs: list[ExerciseLogIn]) 
 
 
 def _insert_logs(db: Database, session_id: UUID, logs: list[ExerciseLogIn]) -> None:
-    for log in logs:
+    for position, log in enumerate(logs):
         db.execute(
             """
             INSERT INTO exercise_logs
                 (session_id, exercise_id, sets, reps, hold_seconds, weight_kg,
-                 difficulty, nerve_response, modification)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 difficulty, nerve_response, modification, sort_order, superset_group)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 session_id,
@@ -146,6 +146,8 @@ def _insert_logs(db: Database, session_id: UUID, logs: list[ExerciseLogIn]) -> N
                 log.difficulty,
                 log.nerve_response,
                 log.modification,
+                position,
+                log.superset_group,
             ],
         )
 

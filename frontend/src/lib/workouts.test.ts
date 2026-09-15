@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest';
 import type { ExerciseLog } from './types';
-import { workoutExercises, workoutLogs } from './workouts';
+import {
+  invalidSupersetGroups,
+  nextSupersetGroup,
+  supersetGroups,
+  workoutExercises,
+  workoutLogs
+} from './workouts';
 
 it('reuses session targets without copying outcomes or sharing edits with the saved workout', () => {
   const logged: ExerciseLog = {
@@ -13,7 +19,8 @@ it('reuses session targets without copying outcomes or sharing edits with the sa
     weight_kg: 2.5,
     modification: 'Heel elevation',
     difficulty: 7,
-    nerve_response: 'Twinge'
+    nerve_response: 'Twinge',
+    superset_group: 1
   };
   const saved = workoutExercises([logged, { ...logged, exercise_id: 'plank' }]);
   const session = workoutLogs(saved);
@@ -28,7 +35,8 @@ it('reuses session targets without copying outcomes or sharing edits with the sa
     reps: 10,
     hold_seconds: 5,
     weight_kg: 2.5,
-    modification: 'Heel elevation'
+    modification: 'Heel elevation',
+    superset_group: 1
   });
 
   session[0].sets = 5;
@@ -36,4 +44,18 @@ it('reuses session targets without copying outcomes or sharing edits with the sa
   saved[0].reps = 12;
   expect(logged.reps).toBe(10);
   expect(workoutLogs(saved)[0].sets).toBe(3);
+});
+
+it('supports multiple independent supersets and detects incomplete groups', () => {
+  const exercises = [
+    { superset_group: 1 },
+    { superset_group: 1 },
+    { superset_group: 2 },
+    { superset_group: 2 },
+    { superset_group: null }
+  ];
+  expect(supersetGroups(exercises)).toEqual([1, 2]);
+  expect(nextSupersetGroup(exercises)).toBe(3);
+  expect(invalidSupersetGroups(exercises)).toEqual([]);
+  expect(invalidSupersetGroups([...exercises, { superset_group: 3 }])).toEqual([3]);
 });

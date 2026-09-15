@@ -47,6 +47,7 @@ export interface ExerciseLog {
   difficulty: number | null;
   nerve_response: string | null;
   modification: string | null;
+  superset_group: number | null;
 }
 
 export interface SessionDetail {
@@ -61,7 +62,14 @@ export interface SessionDetail {
 
 export type WorkoutExercise = Pick<
   ExerciseLog,
-  'exercise_id' | 'exercise_name' | 'sets' | 'reps' | 'hold_seconds' | 'weight_kg' | 'modification'
+  | 'exercise_id'
+  | 'exercise_name'
+  | 'sets'
+  | 'reps'
+  | 'hold_seconds'
+  | 'weight_kg'
+  | 'modification'
+  | 'superset_group'
 >;
 
 export interface WorkoutIn {

@@ -6,7 +6,13 @@
   import WorkoutEditor from '$lib/components/WorkoutEditor.svelte';
   import { todayISO, utcNaiveToLocalInput } from '$lib/time';
   import type { Exercise, ExerciseLog, SessionDetail, Workout, WorkoutIn } from '$lib/types';
-  import { workoutExercises, workoutLogs } from '$lib/workouts';
+  import {
+    invalidSupersetGroups,
+    nextSupersetGroup,
+    supersetGroups,
+    workoutExercises,
+    workoutLogs
+  } from '$lib/workouts';
   import { activePainInstances } from '$lib/stores/painInstances.svelte';
 
   let exercises = $state<Exercise[]>([]);
@@ -28,6 +34,8 @@
   let busy = $state(false);
   let error = $state('');
   const selectedWorkout = $derived(workouts.find((w) => w.id === selectedWorkoutId));
+  const sessionLogs = $derived(added.map((id) => rows[id]));
+  const invalidGroups = $derived(invalidSupersetGroups(sessionLogs));
 
   function createWorkout(logs: ExerciseLog[] = [], populate = true) {
     workoutDraft = { id: null, data: { name: '', exercises: workoutExercises(logs) }, populate };
@@ -88,7 +96,8 @@
       weight_kg: null,
       difficulty: null,
       nerve_response: null,
-      modification: null
+      modification: null,
+      superset_group: null
     };
   }
 
@@ -161,7 +170,8 @@
           weight_kg: l.weight_kg,
           difficulty: l.difficulty,
           nerve_response: l.nerve_response,
-          modification: l.modification
+          modification: l.modification,
+          superset_group: l.superset_group
         }
       ])
     );
@@ -192,7 +202,7 @@
   }
 
   async function saveSession() {
-    if (busy || (!added.length && !editingId)) return;
+    if (busy || (!added.length && !editingId) || invalidGroups.length) return;
     busy = true;
     error = '';
     try {
@@ -404,9 +414,14 @@
       <div class="rows">
         {#each added as id (id)}
           {@const name = exerciseName(id)}
-          <div class="exrow on">
+          <div class="exrow on" class:superset={rows[id].superset_group !== null}>
             <div class="exhead">
-              <span class="exname">{name}</span>
+              <span class="exname">
+                {name}
+                {#if rows[id].superset_group !== null}
+                  <span class="superset-badge">Superset {rows[id].superset_group}</span>
+                {/if}
+              </span>
               <button class="link" onclick={() => removeFromSession(id)}>✕ remove</button>
             </div>
             <div class="inputs">
@@ -446,10 +461,24 @@
                   placeholder="e.g. heel elevation"
                 /></span
               >
+              <span class="wide"
+                ><label>Superset</label><select bind:value={rows[id].superset_group}>
+                  <option value={null}>Not in a superset</option>
+                  {#each supersetGroups(sessionLogs) as group}
+                    <option value={group}>Superset {group}</option>
+                  {/each}
+                  <option value={nextSupersetGroup(sessionLogs)}>New superset</option>
+                </select></span
+              >
             </div>
           </div>
         {/each}
       </div>
+      {#if invalidGroups.length}
+        <p class="superset-warning" role="alert">
+          Add another exercise to {invalidGroups.map((group) => `Superset ${group}`).join(', ')}.
+        </p>
+      {/if}
       <div class="row" style="margin-top: 0.75rem">
         <div class="field f-intensity">
           <label>Intensity (1–10)</label>
@@ -478,7 +507,10 @@
         </div>
       {/if}
       <div class="row">
-        <button class="status-G" onclick={saveSession} disabled={!added.length && !editingId}
+        <button
+          class="status-G"
+          onclick={saveSession}
+          disabled={(!added.length && !editingId) || !!invalidGroups.length}
           >{busy ? 'Saving…' : editingId ? 'Update session' : 'Save session'}</button
         >
         <button
@@ -541,6 +573,20 @@
   .exrow.on {
     border-color: var(--accent);
   }
+  .exrow.superset {
+    border-left-width: 4px;
+  }
+  .superset-badge {
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--surface);
+    padding: 0.1rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+  }
+  .superset-warning {
+    color: var(--danger, #c0392b);
+  }
   .exname {
     display: flex;
     align-items: center;
@@ -569,7 +615,8 @@
   .inputs span.wide {
     flex: 1 1 12rem;
   }
-  .inputs input {
+  .inputs input,
+  .inputs select {
     width: 100%;
   }
   .cat {
