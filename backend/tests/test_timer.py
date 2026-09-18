@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -99,6 +99,46 @@ def test_patch_rejects_end_not_after_start(db, user_id):
         )
 
 
+def test_patch_rejects_future_start_for_running_interval(db, user_id, monkeypatch):
+    now = datetime(2026, 1, 1, 9, 0, 0)
+    monkeypatch.setattr(service, "now_utc", lambda: now)
+    interval = service.start(db, user_id, "sitting", None)
+
+    with pytest.raises(ValueError, match="Start cannot be in the future"):
+        service.patch_interval(
+            db,
+            user_id,
+            interval.id,
+            posture=None,
+            started_at=now + timedelta(minutes=1),
+            ended_at=None,
+            label=None,
+            label_set=False,
+        )
+
+    assert service.current_interval(db, user_id).started_at == now
+
+
+def test_patch_rejects_future_end_for_completed_interval(db, user_id, monkeypatch):
+    now = datetime(2026, 1, 3, 9, 0, 0)
+    monkeypatch.setattr(service, "now_utc", lambda: now)
+    interval = service.start(db, user_id, "lying", None)
+
+    with pytest.raises(ValueError, match="End cannot be in the future"):
+        service.patch_interval(
+            db,
+            user_id,
+            interval.id,
+            posture=None,
+            started_at=now - timedelta(days=2),
+            ended_at=now + timedelta(minutes=1),
+            label=None,
+            label_set=False,
+        )
+
+    assert service.current_interval(db, user_id).started_at == now
+
+
 def test_patch_sets_and_clears_label(db, user_id):
     interval = service.start(db, user_id, "sitting", None)
     with_label = service.patch_interval(
@@ -121,6 +161,32 @@ def _insert_running(db, user_id, posture, started_at, entry_date):
         "VALUES (?, ?, ?, ?) RETURNING *",
         [user_id, entry_date, posture, started_at],
     )
+
+
+def test_stop_removes_legacy_running_interval_that_starts_in_future(db, user_id):
+    now = datetime(2026, 6, 14, 7, 0)
+    future = now + timedelta(days=2)
+    row = _insert_running(db, user_id, "lying", future, date(2026, 6, 16))
+
+    assert service.stop_running(db, user_id, at=now) is None
+    assert db.query_one("SELECT id FROM sit_stand_sessions WHERE id = ?", [row["id"]]) is None
+    assert service.current_interval(db, user_id) is None
+
+
+def test_start_replaces_legacy_running_interval_that_starts_in_future(
+    db, user_id, monkeypatch
+):
+    now = datetime(2026, 6, 14, 7, 0)
+    future = now + timedelta(days=2)
+    old = _insert_running(db, user_id, "lying", future, date(2026, 6, 16))
+    monkeypatch.setattr(service, "now_utc", lambda: now)
+
+    current = service.start(db, user_id, "standing", None)
+
+    assert current.posture == "standing"
+    assert current.started_at == now
+    assert db.query_one("SELECT id FROM sit_stand_sessions WHERE id = ?", [old["id"]]) is None
+    assert service.current_interval(db, user_id).id == current.id
 
 
 def test_stop_splits_overnight_interval_into_per_day_rows(db, user_id):
