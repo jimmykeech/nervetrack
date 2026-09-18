@@ -61,6 +61,15 @@ def _close_and_split(db: Database, user_id: UUID, at: datetime) -> list[dict] | 
     if running is None:
         return None
     segments = day_segments(running["started_at"], at, local_tz())
+    if not segments:
+        # A bad manual edit in an older release could put a running interval in
+        # the future. It has no elapsed time to preserve; remove it so start/stop
+        # can recover instead of indexing an empty segment list forever.
+        db.execute(
+            "DELETE FROM sit_stand_sessions WHERE id = ? AND user_id = ?",
+            [running["id"], user_id],
+        )
+        return None
     return _rewrite_as_segments(
         db, user_id, running["id"], running["posture"], running["label"], segments
     )
@@ -187,8 +196,11 @@ def patch_interval(
     new_end = to_utc_naive(ended_at) if ended_at else existing["ended_at"]
     if new_end is not None and new_end <= new_start:
         raise ValueError("End must be after start")
-    if new_end is None and new_start > now_utc():
-        raise ValueError("A running interval cannot start in the future")
+    now = now_utc()
+    if new_start > now:
+        raise ValueError("Start cannot be in the future")
+    if new_end is not None and new_end > now:
+        raise ValueError("End cannot be in the future")
     new_label = label if label_set else existing["label"]
     with db.cursor():
         if new_end is None:
