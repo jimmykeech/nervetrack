@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -97,6 +97,26 @@ def test_patch_rejects_end_not_after_start(db, user_id):
             label=None,
             label_set=False,
         )
+
+
+def test_patch_rejects_future_start_for_running_interval(db, user_id, monkeypatch):
+    now = datetime(2026, 1, 1, 9, 0, 0)
+    monkeypatch.setattr(service, "now_utc", lambda: now)
+    interval = service.start(db, user_id, "sitting", None)
+
+    with pytest.raises(ValueError, match="cannot start in the future"):
+        service.patch_interval(
+            db,
+            user_id,
+            interval.id,
+            posture=None,
+            started_at=now + timedelta(minutes=1),
+            ended_at=None,
+            label=None,
+            label_set=False,
+        )
+
+    assert service.current_interval(db, user_id).started_at == now
 
 
 def test_patch_sets_and_clears_label(db, user_id):

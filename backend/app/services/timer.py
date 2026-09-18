@@ -187,6 +187,8 @@ def patch_interval(
     new_end = to_utc_naive(ended_at) if ended_at else existing["ended_at"]
     if new_end is not None and new_end <= new_start:
         raise ValueError("End must be after start")
+    if new_end is None and new_start > now_utc():
+        raise ValueError("A running interval cannot start in the future")
     new_label = label if label_set else existing["label"]
     with db.cursor():
         if new_end is None:
